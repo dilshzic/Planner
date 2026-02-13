@@ -1,7 +1,7 @@
 [versions]
 # --- Existing Versions ---
 agp = "9.0.0"
-coreKtx = "1.17.0"
+coreKtx = "1.15.0"
 firebaseBomVersion = "33.1.0"
 hiltAndroid = "2.57.1"
 junit = "4.13.2"

@@ -26,8 +26,8 @@ object AppModule {
             AppDatabase::class.java,
             "planner_db"
         )
-        .fallbackToDestructiveMigration() // Use this only during dev if schema changes
-        .build()
+            .fallbackToDestructiveMigration() // Use this only during dev if schema changes
+            .build()
     }
 
     @Provides
@@ -38,17 +38,23 @@ object AppModule {
 
     @Provides
     @Singleton
+    fun provideCategoryDao(db: AppDatabase): CategoryDao {
+        return db.categoryDao()
+    }
+
+    @Provides
+    @Singleton
     fun provideFirestoreService(): FirestoreService {
         return FirestoreService()
     }
 
     @Provides
     @Singleton
-        fun provideTaskRepository(
-            taskDao: TaskDao,
-            categoryDao: CategoryDao,
-            firestoreService: FirestoreService
-        ): TaskRepository {
-            return TaskRepositoryImpl(taskDao, categoryDao,firestoreService)
-        }
+    fun provideTaskRepository(
+        taskDao: TaskDao,
+        categoryDao: CategoryDao,
+        firestoreService: FirestoreService
+    ): TaskRepository {
+        return TaskRepositoryImpl(taskDao, categoryDao, firestoreService)
     }
+}

@@ -10,7 +10,7 @@ plugins {
 
 android {
     namespace = "com.algorithmx.planner"
-    compileSdk = 34
+    compileSdk = 5
 
     defaultConfig {
         applicationId = "com.algorithmx.planner"
