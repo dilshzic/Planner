@@ -7,6 +7,7 @@ hiltAndroid = "2.57.1"
 junit = "4.13.2"
 junitVersion = "1.3.0"
 espressoCore = "3.7.0"
+vertexai = "16.5.0"
 
 # --- NEW Necessary Versions ---
 kotlin = "2.0.21"
@@ -42,7 +43,7 @@ dagger-hilt-compiler = { module = "com.google.dagger:hilt-compiler", version.ref
 firebase-bom-v3310 = { module = "com.google.firebase:firebase-bom", version.ref = "firebaseBomVersion" }
 google-firebase-auth = { module = "com.google.firebase:firebase-auth" }
 google-firebase-firestore = { module = "com.google.firebase:firebase-firestore" }
-google-firebase-vertexai = { module = "com.google.firebase:firebase-vertexai" }
+google-firebase-vertexai = { module = "com.google.firebase:firebase-vertexai", version.ref = "vertexai" }
 hilt-android-v2571 = { module = "com.google.dagger:hilt-android", version.ref = "hiltAndroid" }
 junit = { group = "junit", name = "junit", version.ref = "junit" }
 androidx-junit = { group = "androidx.test.ext", name = "junit", version.ref = "junitVersion" }
