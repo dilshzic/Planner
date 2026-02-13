@@ -26,7 +26,7 @@ object AppModule {
             AppDatabase::class.java,
             "planner_db"
         )
-        // .fallbackToDestructiveMigration() // Use this only during dev if schema changes
+        .fallbackToDestructiveMigration() // Use this only during dev if schema changes
         .build()
     }
 
