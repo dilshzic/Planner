@@ -116,6 +116,10 @@ class TaskRepositoryImpl @Inject constructor(
         categoryDao.insertCategory(category)
         // Note: You can add firestoreService.saveCategory(category) later if needed
     }
+    // Add implementation
+    override fun getAllTasks(): Flow<List<Task>> {
+        return taskDao.getAllTasks()
+    }
 
     override suspend fun deleteCategory(category: Category) {
         categoryDao.deleteCategory(category)

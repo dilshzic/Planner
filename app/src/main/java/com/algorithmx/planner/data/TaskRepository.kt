@@ -29,5 +29,6 @@ interface TaskRepository {
     suspend fun getTaskById(id: String): Task?
 
     fun getHighYieldTasks(): Flow<List<Task>>
-
+    // Add to interface
+    fun getAllTasks(): Flow<List<Task>>
 }
