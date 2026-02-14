@@ -10,12 +10,12 @@ plugins {
 
 android {
     namespace = "com.algorithmx.planner"
-    compileSdk = 5
+    compileSdk = 35
 
     defaultConfig {
         applicationId = "com.algorithmx.planner"
         minSdk = 26
-        targetSdk = 36
+        targetSdk = 35
         versionCode = 1
         versionName = "1.0"
 
