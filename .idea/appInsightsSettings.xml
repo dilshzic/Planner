@@ -22,10 +22,10 @@
             <InsightsFilterSettings>
               <option name="connection">
                 <ConnectionSetting>
-                  <option name="appId" value="PLACEHOLDER" />
-                  <option name="mobileSdkAppId" value="" />
-                  <option name="projectId" value="" />
-                  <option name="projectNumber" value="" />
+                  <option name="appId" value="com.algorithmx.planner" />
+                  <option name="mobileSdkAppId" value="1:737058239197:android:8d3187650ce10833cae134" />
+                  <option name="projectId" value="planner-47c07" />
+                  <option name="projectNumber" value="737058239197" />
                 </ConnectionSetting>
               </option>
               <option name="signal" value="SIGNAL_UNSPECIFIED" />
