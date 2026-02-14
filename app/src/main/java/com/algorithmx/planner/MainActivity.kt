@@ -1,16 +1,19 @@
 package com.algorithmx.planner
 
+import android.Manifest
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.compose.material3.MaterialTheme
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.material3.windowsizeclass.ExperimentalMaterial3WindowSizeClassApi
 import androidx.compose.material3.windowsizeclass.calculateWindowSizeClass
 import androidx.work.ExistingPeriodicWorkPolicy
+import androidx.work.OneTimeWorkRequestBuilder // Import this
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import com.algorithmx.planner.ui.PlannerAppUI
 import com.algorithmx.planner.ui.theme.PlannerTheme
+import com.algorithmx.planner.worker.CalendarSyncWorker // Import this
 import com.algorithmx.planner.worker.DailySchedulerWorker
 import dagger.hilt.android.AndroidEntryPoint
 import java.util.concurrent.TimeUnit
@@ -18,25 +21,28 @@ import java.util.concurrent.TimeUnit
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
 
+    // Permission Launcher
+    private val requestPermissionLauncher =
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) { isGranted: Boolean ->
+            if (isGranted) {
+                // If granted, run the sync immediately
+                syncCalendarNow()
+            }
+        }
+
     @OptIn(ExperimentalMaterial3WindowSizeClassApi::class)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // --- 1. Schedule Background Workers ---
-        // The "DailyScheduler" runs every 24 hours to generate recurring tasks
+        // 1. Request Calendar Permission on Startup
+        requestPermissionLauncher.launch(Manifest.permission.READ_CALENDAR)
+
+        // 2. Schedule Background Workers
         setupBackgroundWorkers()
 
         setContent {
-            // --- 2. Setup UI Theme ---
-            // Using default MaterialTheme for now.
-            // If you created a custom theme in ui/theme/Theme.kt, use PlannerTheme instead.
             PlannerTheme {
-
-                // --- 3. Calculate Screen Size ---
-                // This determines if we show the Phone UI (Bottom Bar) or Tablet UI (Nav Rail)
                 val windowSize = calculateWindowSizeClass(this)
-
-                // --- 4. Launch App Shell ---
                 PlannerAppUI(windowSize = windowSize.widthSizeClass)
             }
         }
@@ -48,9 +54,14 @@ class MainActivity : ComponentActivity() {
         ).build()
 
         WorkManager.getInstance(applicationContext).enqueueUniquePeriodicWork(
-            "DailyScheduler", // Unique name ensures we don't duplicate the job
-            ExistingPeriodicWorkPolicy.KEEP, // If it's already scheduled, do nothing
+            "DailyScheduler",
+            ExistingPeriodicWorkPolicy.KEEP,
             workRequest
         )
+    }
+
+    private fun syncCalendarNow() {
+        val syncRequest = OneTimeWorkRequestBuilder<CalendarSyncWorker>().build()
+        WorkManager.getInstance(applicationContext).enqueue(syncRequest)
     }
 }

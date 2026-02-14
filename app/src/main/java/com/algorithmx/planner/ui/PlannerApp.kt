@@ -22,29 +22,20 @@ import com.algorithmx.planner.ui.triage.TriageScreen
 @Composable
 fun PlannerAppUI(windowSize: WindowWidthSizeClass) {
     val navController = rememberNavController()
-
-    // Logic: If screen is EXPANDED (Tablet/Desktop), use Side Rail.
-    // Otherwise (Compact/Medium), use Bottom Bar.
     val isTablet = windowSize == WindowWidthSizeClass.Expanded
 
     Row(modifier = Modifier.fillMaxSize()) {
-
-        // 1. Tablet Navigation (Left Rail)
         if (isTablet) {
             PlannerNavRail(navController)
         }
 
-        // 2. The Main Content Area
         Scaffold(
             bottomBar = {
-                // Phone Navigation (Bottom Bar)
                 if (!isTablet) {
                     PlannerBottomBar(navController)
                 }
             }
         ) { innerPadding ->
-
-            // 3. Navigation Host (Screen Switching)
             NavHost(
                 navController = navController,
                 startDestination = Screen.Home.route,
@@ -56,7 +47,8 @@ fun PlannerAppUI(windowSize: WindowWidthSizeClass) {
                         onTaskClick = { taskId ->
                             navController.navigate(Screen.AddEditTask.createRoute(taskId))
                         },
-                        onAddTaskClick = { // New callback
+                        // FIXED: Correct parameter name matching HomeScreen definition
+                        onNavigateToAdd = {
                             navController.navigate(Screen.AddEditTask.createRoute("new"))
                         }
                     )
@@ -65,30 +57,23 @@ fun PlannerAppUI(windowSize: WindowWidthSizeClass) {
                     TriageScreen()
                 }
                 composable(Screen.Calendar.route) {
-                    // Placeholder for Calendar
+                    // Calendar placeholder
                 }
                 composable(Screen.Settings.route) {
-                    // Placeholder for Settings
-                }
-                composable("add_task") {
-                    AddEditTaskScreen(
-                        onNavigateBack = { navController.popBackStack() }
-                    )
+                    // Settings placeholder
                 }
                 composable(
-                    route = Screen.AddEditTask.route, // "add_task/{taskId}"
+                    route = Screen.AddEditTask.route,
                     arguments = listOf(navArgument("taskId") {
                         type = NavType.StringType
                         defaultValue = "new"
                     })
-                ) { backStackEntry ->
-                    // We don't need to manually pass taskId here because
-                    // the HiltViewModel inside AddEditTaskScreen reads it automatically.
+                ) {
                     AddEditTaskScreen(
                         onNavigateBack = { navController.popBackStack() }
                     )
                 }
             }
-
+        }
     }
-}}
+}

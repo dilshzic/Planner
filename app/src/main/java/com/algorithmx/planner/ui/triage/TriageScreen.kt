@@ -5,10 +5,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.DoneAll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -19,11 +17,11 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.algorithmx.planner.data.entity.Task
+import kotlinx.coroutines.launch // <--- THIS WAS MISSING
 import kotlin.math.roundToInt
 
 @Composable
@@ -42,7 +40,6 @@ fun TriageScreen(
         if (currentTask == null) {
             EmptyState()
         } else {
-            // The Card Stack
             TriageCard(
                 task = currentTask!!,
                 subtasks = subtasks,
@@ -60,36 +57,30 @@ fun TriageCard(
     onSwipeRight: () -> Unit,
     onSwipeLeft: () -> Unit
 ) {
-    // Gesture State
     val offsetX = remember { Animatable(0f) }
     val rotation = remember { Animatable(0f) }
     val scope = rememberCoroutineScope()
-
-    // Threshold for triggering a swipe
     val dismissThreshold = 300f
 
     Card(
         elevation = CardDefaults.cardElevation(defaultElevation = 8.dp),
         modifier = Modifier
             .fillMaxWidth()
-            .height(500.dp) // Fixed height for the card deck look
+            .height(500.dp)
             .offset { IntOffset(offsetX.value.roundToInt(), 0) }
             .rotate(rotation.value)
             .graphicsLayer {
-                // Add a slight transparency/scale effect when dragging
                 alpha = 1f - (kotlin.math.abs(offsetX.value) / 1000f)
             }
             .pointerInput(task.id) {
                 detectDragGestures(
                     onDragEnd = {
-                        // Decide to keep or dismiss based on how far needed dragged
                         if (offsetX.value > dismissThreshold) {
                             onSwipeRight()
                         } else if (offsetX.value < -dismissThreshold) {
                             onSwipeLeft()
                         } else {
-                            // Reset position
-                            scope.launch {
+                            scope.launch { // Now valid because of import
                                 offsetX.animateTo(0f)
                                 rotation.animateTo(0f)
                             }
@@ -97,87 +88,52 @@ fun TriageCard(
                     },
                     onDrag = { change, dragAmount ->
                         change.consume()
-                        scope.launch {
+                        scope.launch { // Now valid because of import
                             offsetX.snapTo(offsetX.value + dragAmount.x)
-                            // Rotate slightly as you drag
                             rotation.snapTo(offsetX.value / 20f)
                         }
                     }
                 )
             }
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(24.dp)
-        ) {
-            // Priority Indicator
+        Column(modifier = Modifier.fillMaxSize().padding(24.dp)) {
             Text(
                 text = if (task.priority > 2) "🔥 HIGH YIELD" else "ROUTINE",
                 color = if (task.priority > 2) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.secondary,
                 style = MaterialTheme.typography.labelMedium,
                 fontWeight = FontWeight.Bold
             )
-            
             Spacer(modifier = Modifier.height(16.dp))
-
-            // Title
             Text(
                 text = task.title,
                 style = MaterialTheme.typography.headlineMedium,
                 fontWeight = FontWeight.Bold
             )
-
             Spacer(modifier = Modifier.height(8.dp))
-
             Text(
                 text = "${task.durationMinutes} mins",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
+            HorizontalDivider(modifier = Modifier.padding(vertical = 16.dp))
 
-            Divider(modifier = Modifier.padding(vertical = 16.dp))
-
-            // Subtasks Section
             if (subtasks.isNotEmpty()) {
-                Text(
-                    text = "Subtasks:",
-                    style = MaterialTheme.typography.titleSmall,
-                    color = MaterialTheme.colorScheme.primary
-                )
+                Text("Subtasks:", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary)
                 Spacer(modifier = Modifier.height(8.dp))
                 subtasks.forEach { sub ->
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                            imageVector = Icons.Default.Check,
-                            contentDescription = null,
-                            modifier = Modifier.size(16.dp),
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
+                        Icon(Icons.Default.Check, null, modifier = Modifier.size(16.dp))
                         Spacer(modifier = Modifier.width(8.dp))
-                        Text(
-                            text = sub.title,
-                            style = MaterialTheme.typography.bodyMedium
-                        )
+                        Text(sub.title, style = MaterialTheme.typography.bodyMedium)
                     }
-                    Spacer(modifier = Modifier.height(4.dp))
                 }
             } else {
-                Text(
-                    text = "No subtasks defined.",
-                    style = MaterialTheme.typography.bodySmall,
-                    fontStyle = androidx.compose.ui.text.font.FontStyle.Italic,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
-                )
+                Text("No subtasks defined.", style = MaterialTheme.typography.bodySmall, fontStyle = androidx.compose.ui.text.font.FontStyle.Italic)
             }
 
             Spacer(modifier = Modifier.weight(1f))
 
-            // Hint Text
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 Text("⬅️ Skip", color = Color.Red.copy(alpha = 0.5f))
                 Text("Do Today ➡️", color = Color.Green.copy(alpha = 0.5f))
             }
@@ -187,28 +143,10 @@ fun TriageCard(
 
 @Composable
 fun EmptyState() {
-    Column(
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center
-    ) {
-        Icon(
-            Icons.Default.DoneAll,
-            contentDescription = null,
-            modifier = Modifier
-                .size(100.dp)
-                .background(MaterialTheme.colorScheme.primaryContainer, CircleShape)
-                .padding(20.dp),
-            tint = MaterialTheme.colorScheme.onPrimaryContainer
-        )
+    Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+        Icon(Icons.Default.DoneAll, null, modifier = Modifier.size(100.dp).background(MaterialTheme.colorScheme.primaryContainer, CircleShape).padding(20.dp), tint = MaterialTheme.colorScheme.onPrimaryContainer)
         Spacer(modifier = Modifier.height(24.dp))
-        Text(
-            text = "Triage Complete!",
-            style = MaterialTheme.typography.headlineSmall
-        )
-        Text(
-            text = "Your backlog is clear for now.",
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
+        Text("Triage Complete!", style = MaterialTheme.typography.headlineSmall)
+        Text("Your backlog is clear for now.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }

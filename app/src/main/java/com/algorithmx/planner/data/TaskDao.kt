@@ -48,5 +48,15 @@ interface TaskDao {
     @Query("SELECT * FROM tasks")
     fun getAllTasks(): Flow<List<Task>>
 
+    // ... existing queries ...
+
+    // FOR AUTO-SCHEDULER:
+    // 1. Get today's fixed schedule (Zones & Appointments) to find gaps
+    @Query("SELECT * FROM tasks WHERE scheduledDate = :date AND startDateTime IS NOT NULL ORDER BY startDateTime ASC")
+    suspend fun getScheduledTasksSync(date: LocalDate): List<Task>
+
+    // 2. Get the backlog (Unscheduled tasks) to pick from
+    @Query("SELECT * FROM tasks WHERE scheduledDate IS NULL AND isCompleted = 0")
+    suspend fun getBacklogTasksSync(): List<Task>
 
 }
