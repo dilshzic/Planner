@@ -1,18 +1,28 @@
 package com.algorithmx.planner.ui.addedit
 
+import android.app.DatePickerDialog
+import android.app.TimePickerDialog
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowBack
-import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.CalendarToday
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Save
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import java.time.LocalDate
+import java.time.LocalTime
 import java.time.format.DateTimeFormatter
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -22,10 +32,11 @@ fun AddEditTaskScreen(
     viewModel: AddEditTaskViewModel = hiltViewModel()
 ) {
     val state by viewModel.uiState.collectAsState()
+    val context = LocalContext.current
 
-    // Auto-navigate back when saved
-    LaunchedEffect(state.isSaved) {
-        if (state.isSaved) {
+    // Handle Save Success
+    LaunchedEffect(state.isTaskSaved) {
+        if (state.isTaskSaved) {
             onNavigateBack()
         }
     }
@@ -33,83 +44,204 @@ fun AddEditTaskScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("New Plan") },
+                title = { Text("Task Editor") },
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack) {
                         Icon(Icons.Default.ArrowBack, "Back")
                     }
                 },
                 actions = {
-                    IconButton(onClick = { viewModel.onEvent(AddEditTaskEvent.SaveTask) }) {
-                        Icon(Icons.Default.Check, "Save")
+                    IconButton(onClick = { viewModel.onSaveTask() }) {
+                        Icon(Icons.Default.Save, "Save")
                     }
                 }
             )
         }
     ) { padding ->
-        Column(
+        LazyColumn(
             modifier = Modifier
                 .padding(padding)
                 .fillMaxSize()
-                .padding(16.dp)
-                .verticalScroll(rememberScrollState()),
+                .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            // 1. Title Input
-            OutlinedTextField(
-                value = state.title,
-                onValueChange = { viewModel.onEvent(AddEditTaskEvent.TitleChanged(it)) },
-                label = { Text("What needs doing?") },
-                modifier = Modifier.fillMaxWidth(),
-                singleLine = true
-            )
-
-            // 2. Zone Toggle (Switch between Task vs Block)
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Text("Is this a Time Block (Zone)?", modifier = Modifier.weight(1f))
-                Switch(
-                    checked = state.isZone,
-                    onCheckedChange = { viewModel.onEvent(AddEditTaskEvent.IsZoneChanged(it)) }
+            // 1. TITLE INPUT
+            item {
+                OutlinedTextField(
+                    value = state.title,
+                    onValueChange = viewModel::onTitleChange,
+                    label = { Text("Task Title") },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    textStyle = MaterialTheme.typography.headlineSmall
                 )
             }
 
-            // 3. Date & Time Pickers (Simplified)
-            // Note: In a real app, you'd trigger a DatePickerDialog here.
-            // For now, we just show the read-only value.
-            OutlinedCard(
-                onClick = { /* Open Date Picker */ },
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Default.Schedule, null)
-                    Spacer(modifier = Modifier.width(16.dp))
-                    Text(text = state.selectedDate.format(DateTimeFormatter.ISO_LOCAL_DATE))
+            // 2. PRIORITY SELECTOR
+            item {
+                Text("Priority Level", style = MaterialTheme.typography.labelLarge)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    listOf(1 to "Low", 2 to "Medium", 3 to "High Yield").forEach { (level, label) ->
+                        FilterChip(
+                            selected = state.priority == level,
+                            onClick = { viewModel.onPriorityChange(level) },
+                            label = { Text(label) },
+                            colors = FilterChipDefaults.filterChipColors(
+                                selectedContainerColor = if(level==3) MaterialTheme.colorScheme.errorContainer else MaterialTheme.colorScheme.primaryContainer
+                            )
+                        )
+                    }
                 }
             }
-            
-            // 4. Time Picker (Only if it's a Zone)
-            if (state.isZone) {
-                Text("Duration: ${state.durationMinutes} mins", style = MaterialTheme.typography.labelLarge)
-                Slider(
-                    value = state.durationMinutes.toFloat(),
-                    onValueChange = { /* Update Duration */ },
-                    valueRange = 15f..240f,
-                    steps = 15
+
+            // 3. DATE & TIME PICKERS
+            item {
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                    // Date Picker
+                    OutlinedTextField(
+                        value = state.selectedDate?.format(DateTimeFormatter.ISO_LOCAL_DATE) ?: "No Date",
+                        onValueChange = {},
+                        readOnly = true,
+                        label = { Text("Date") },
+                        leadingIcon = { Icon(Icons.Default.CalendarToday, null) },
+                        modifier = Modifier.weight(1f).clickable {
+                            val now = state.selectedDate ?: LocalDate.now()
+                            DatePickerDialog(context, { _, y, m, d ->
+                                viewModel.onDateChange(LocalDate.of(y, m + 1, d))
+                            }, now.year, now.monthValue - 1, now.dayOfMonth).show()
+                        },
+                        enabled = false, // Disable typing, use click
+                        colors = OutlinedTextFieldDefaults.colors(
+                            disabledTextColor = MaterialTheme.colorScheme.onSurface,
+                            disabledBorderColor = MaterialTheme.colorScheme.outline,
+                            disabledLeadingIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                            disabledLabelColor = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    )
+
+                    // Time Picker
+                    OutlinedTextField(
+                        value = state.selectedTime?.format(DateTimeFormatter.ofPattern("HH:mm")) ?: "No Time",
+                        onValueChange = {},
+                        readOnly = true,
+                        label = { Text("Time") },
+                        leadingIcon = { Icon(Icons.Default.Schedule, null) },
+                        modifier = Modifier.weight(1f).clickable {
+                            val now = state.selectedTime ?: LocalTime.now()
+                            TimePickerDialog(context, { _, h, m ->
+                                viewModel.onTimeChange(LocalTime.of(h, m))
+                            }, now.hour, now.minute, true).show()
+                        },
+                        enabled = false,
+                        colors = OutlinedTextFieldDefaults.colors(
+                            disabledTextColor = MaterialTheme.colorScheme.onSurface,
+                            disabledBorderColor = MaterialTheme.colorScheme.outline,
+                            disabledLeadingIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                            disabledLabelColor = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    )
+                }
+            }
+
+            // 4. RECURRENCE
+            item {
+                var expanded by remember { mutableStateOf(false) }
+                val options = mapOf(
+                    null to "Does not repeat",
+                    "FREQ=DAILY" to "Every Day",
+                    "FREQ=WEEKLY" to "Every Week",
+                    "FREQ=MONTHLY" to "Every Month"
+                )
+
+                ExposedDropdownMenuBox(
+                    expanded = expanded,
+                    onExpandedChange = { expanded = !expanded }
+                ) {
+                    OutlinedTextField(
+                        value = options[state.recurrenceRule] ?: "Custom",
+                        onValueChange = {},
+                        readOnly = true,
+                        label = { Text("Repeat") },
+                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
+                        modifier = Modifier.menuAnchor().fillMaxWidth()
+                    )
+                    ExposedDropdownMenu(
+                        expanded = expanded,
+                        onDismissRequest = { expanded = false }
+                    ) {
+                        options.forEach { (rule, label) ->
+                            DropdownMenuItem(
+                                text = { Text(label) },
+                                onClick = {
+                                    viewModel.onRecurrenceChange(rule)
+                                    expanded = false
+                                }
+                            )
+                        }
+                    }
+                }
+            }
+
+            // 5. DESCRIPTION
+            item {
+                OutlinedTextField(
+                    value = state.description,
+                    onValueChange = viewModel::onDescriptionChange,
+                    label = { Text("Notes / Resources") },
+                    modifier = Modifier.fillMaxWidth().height(100.dp),
+                    maxLines = 5
                 )
             }
 
-            // 5. Category Chips
-            Text("Category", style = MaterialTheme.typography.labelLarge)
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                state.categories.forEach { cat ->
-                    FilterChip(
-                        selected = state.categoryId == cat.id,
-                        onClick = { /* Update Category */ },
-                        label = { Text(cat.name) }
+
+
+            // 6. SUBTASKS SECTION
+            item {
+                Text(
+                    text = "Subtasks & Checklist",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.primary
+                )
+            }
+
+            // Input for new subtask
+            item {
+                var subtaskText by remember { mutableStateOf("") }
+                Row(
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    OutlinedTextField(
+                        value = subtaskText,
+                        onValueChange = { subtaskText = it },
+                        placeholder = { Text("Add a step...") },
+                        modifier = Modifier.weight(1f)
                     )
+                    IconButton(
+                        onClick = {
+                            viewModel.onAddSubtask(subtaskText)
+                            subtaskText = ""
+                        }
+                    ) {
+                        Icon(Icons.Default.Add, null)
+                    }
+                }
+            }
+
+            // List of existing subtasks
+            items(state.subtasks) { sub ->
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text("• ${sub.title}", style = MaterialTheme.typography.bodyLarge)
+                    IconButton(onClick = { viewModel.onDeleteSubtask(sub.id) }) {
+                        Icon(Icons.Default.Delete, "Delete", tint = MaterialTheme.colorScheme.error)
+                    }
                 }
             }
         }

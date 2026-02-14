@@ -8,17 +8,18 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccountCircle
 import androidx.compose.material.icons.filled.CloudSync
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
-// SINGLE CORRECT IMPORT:
 import com.algorithmx.planner.worker.CalendarSyncWorker
 import com.google.android.gms.auth.api.signin.GoogleSignIn
 import com.google.android.gms.auth.api.signin.GoogleSignInOptions
@@ -34,9 +35,12 @@ fun SettingsScreen(
     val state by viewModel.uiState.collectAsState()
     val context = LocalContext.current
 
-    // --- Google Sign-In Setup ---
+    // --- Google Sign-In Config ---
+    // TODO: REPLACE THIS STRING with your Web Client ID from Firebase Console -> Authentication -> Sign-in method -> Google
+    val webClientId = "YOUR_WEB_CLIENT_ID_HERE"
+
     val gso = GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
-        .requestIdToken("YOUR_WEB_CLIENT_ID_HERE") // Optional for now
+        .requestIdToken(webClientId)
         .requestEmail()
         .build()
 
@@ -54,17 +58,25 @@ fun SettingsScreen(
                 Firebase.auth.signInWithCredential(credential)
                     .addOnCompleteListener { authTask ->
                         if (authTask.isSuccessful) {
-                            Toast.makeText(context, "Signed In Successfully!", Toast.LENGTH_SHORT).show()
+                            Toast.makeText(context, "Welcome ${account.displayName}!", Toast.LENGTH_SHORT).show()
+                            viewModel.setDebugError("") // Clear errors
 
-                            // Trigger Sync
+                            // Trigger Initial Sync
                             val request = OneTimeWorkRequestBuilder<CalendarSyncWorker>().build()
                             WorkManager.getInstance(context).enqueue(request)
                         } else {
-                            Toast.makeText(context, "Authentication Failed", Toast.LENGTH_LONG).show()
+                            val msg = "Firebase Auth Failed: ${authTask.exception?.message}"
+                            viewModel.setDebugError(msg)
+                            Toast.makeText(context, "Auth Failed", Toast.LENGTH_LONG).show()
                         }
                     }
             } catch (e: ApiException) {
-                Toast.makeText(context, "Google Sign In Failed", Toast.LENGTH_LONG).show()
+                // IMPORTANT: This code tells you WHY it failed
+                // 10 = Developer Error (Wrong Client ID or Missing SHA-1)
+                // 12500 = SHA-1 Missing
+                val errorMsg = "Google Sign-In Error: ${e.statusCode}"
+                viewModel.setDebugError(errorMsg)
+                Toast.makeText(context, errorMsg, Toast.LENGTH_LONG).show()
             }
         }
     }
@@ -80,6 +92,20 @@ fun SettingsScreen(
             fontWeight = FontWeight.Bold,
             modifier = Modifier.padding(bottom = 24.dp)
         )
+
+        // --- Debug Error Box ---
+        if (!state.lastError.isNullOrEmpty()) {
+            Card(
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer),
+                modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp)
+            ) {
+                Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.Warning, null, tint = MaterialTheme.colorScheme.onErrorContainer)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(text = state.lastError!!, color = MaterialTheme.colorScheme.onErrorContainer)
+                }
+            }
+        }
 
         // --- Account Section ---
         Text(text = "Account", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
