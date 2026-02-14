@@ -17,6 +17,7 @@ import com.algorithmx.planner.ui.home.HomeScreen
 import com.algorithmx.planner.ui.navigation.PlannerBottomBar
 import com.algorithmx.planner.ui.navigation.PlannerNavRail
 import com.algorithmx.planner.ui.navigation.Screen
+import com.algorithmx.planner.ui.triage.TriageScreen
 
 @Composable
 fun PlannerAppUI(windowSize: WindowWidthSizeClass) {
@@ -61,7 +62,7 @@ fun PlannerAppUI(windowSize: WindowWidthSizeClass) {
                     )
                 }
                 composable(Screen.Planning.route) {
-                    // Placeholder for Planning Screen
+                    TriageScreen()
                 }
                 composable(Screen.Calendar.route) {
                     // Placeholder for Calendar

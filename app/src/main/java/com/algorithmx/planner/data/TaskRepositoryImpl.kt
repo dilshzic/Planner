@@ -3,6 +3,7 @@ package com.algorithmx.planner.data
 import com.algorithmx.planner.data.entity.Category
 import com.algorithmx.planner.data.entity.Task
 import com.algorithmx.planner.data.entity.WorkloadStat
+import com.algorithmx.planner.logic.YieldEngine
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 import kotlinx.coroutines.CoroutineScope
@@ -10,6 +11,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.map
 import java.time.LocalDate
 import java.time.LocalDateTime
 import javax.inject.Inject
@@ -19,7 +21,8 @@ import javax.inject.Singleton
 class TaskRepositoryImpl @Inject constructor(
     private val taskDao: TaskDao,
     private val categoryDao: CategoryDao,
-    private val firestoreService: FirestoreService
+    private val firestoreService: FirestoreService,
+    private val yieldEngine: YieldEngine
 ) : TaskRepository {
 
     private val auth = FirebaseAuth.getInstance()
@@ -116,5 +119,11 @@ class TaskRepositoryImpl @Inject constructor(
 
     override suspend fun deleteCategory(category: Category) {
         categoryDao.deleteCategory(category)
+    }
+    override fun getHighYieldTasks(): Flow<List<Task>> {
+        return taskDao.getAllTasks().map { tasks ->
+            tasks.filter { !it.isCompleted }
+                .sortedByDescending { yieldEngine.calculateYieldScore(it) }
+        }
     }
 }

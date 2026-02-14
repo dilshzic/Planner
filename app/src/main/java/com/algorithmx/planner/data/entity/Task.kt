@@ -34,6 +34,8 @@ data class Task(
     val isCompleted: Boolean = false,
     val completedDate: LocalDateTime? = null,
 
+    // NEW: The "Exam Date" or submission deadline
+    val deadline: LocalDate? = null,
     // NEW: Link to specific user for Cloud Sync
     val userId: String? = null,
     val updatedAt: Long = System.currentTimeMillis()
