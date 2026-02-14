@@ -1,6 +1,7 @@
 package com.algorithmx.planner.ui.settings
 
 import android.app.Activity
+import android.util.Log
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -34,10 +35,12 @@ fun SettingsScreen(
 ) {
     val state by viewModel.uiState.collectAsState()
     val context = LocalContext.current
-
+    LaunchedEffect(Unit) {
+        android.util.Log.d("AUTH_DEBUG", "Loaded Client ID: ${com.algorithmx.planner.BuildConfig.WEB_CLIENT_ID}")
+    }
     // --- Google Sign-In Config ---
     // TODO: REPLACE THIS STRING with your Web Client ID from Firebase Console -> Authentication -> Sign-in method -> Google
-    val webClientId = "YOUR_WEB_CLIENT_ID_HERE"
+    val webClientId = com.algorithmx.planner.BuildConfig.WEB_CLIENT_ID
 
     val gso = GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
         .requestIdToken(webClientId)
@@ -53,6 +56,7 @@ fun SettingsScreen(
             val task = GoogleSignIn.getSignedInAccountFromIntent(result.data)
             try {
                 val account = task.getResult(ApiException::class.java)
+                Log.d("AUTH_DEBUG", "Google Sign-In Success: ${account.email}")
                 val credential = GoogleAuthProvider.getCredential(account.idToken, null)
 
                 Firebase.auth.signInWithCredential(credential)
@@ -68,6 +72,7 @@ fun SettingsScreen(
                             val msg = "Firebase Auth Failed: ${authTask.exception?.message}"
                             viewModel.setDebugError(msg)
                             Toast.makeText(context, "Auth Failed", Toast.LENGTH_LONG).show()
+
                         }
                     }
             } catch (e: ApiException) {
@@ -77,6 +82,19 @@ fun SettingsScreen(
                 val errorMsg = "Google Sign-In Error: ${e.statusCode}"
                 viewModel.setDebugError(errorMsg)
                 Toast.makeText(context, errorMsg, Toast.LENGTH_LONG).show()
+                val statusCode = e.statusCode
+                val errorDescription = when (statusCode) {
+                    7 -> "NETWORK_ERROR: No internet or firewall blocking Google."
+                    10 -> "DEVELOPER_ERROR: SHA-1 mismatch or wrong Web Client ID."
+                    12500 -> "SIGN_IN_FAILED: Google Play Services internal error."
+                    else -> "Common Status Code: $statusCode"
+                }
+
+                // 1. Log to Android Studio Logcat
+                Log.e("AUTH_DEBUG", "Sign-in failed. Code: $statusCode - $errorDescription", e)
+
+                // 2. Show on the App Screen
+                viewModel.setDebugError("Error $statusCode: $errorDescription")
             }
         }
     }
@@ -86,6 +104,19 @@ fun SettingsScreen(
             .fillMaxSize()
             .padding(16.dp)
     ) {
+        if (state.debugErrorMessage != null) {
+            Card(
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer),
+                modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp)
+            ) {
+                Text(
+                    text = state.debugErrorMessage!!,
+                    color = MaterialTheme.colorScheme.onErrorContainer,
+                    modifier = Modifier.padding(16.dp),
+                    style = MaterialTheme.typography.bodySmall
+                )
+            }
+        }
         Text(
             text = "Settings",
             style = MaterialTheme.typography.headlineMedium,

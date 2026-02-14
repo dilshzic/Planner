@@ -15,7 +15,8 @@ data class SettingsUiState(
     val isAuthenticated: Boolean = false,
     val displayName: String? = null,
     val userEmail: String? = null,
-    val lastError: String? = null // For debugging
+    val lastError: String? = null ,// For debugging
+    val debugErrorMessage: String? = null
 )
 
 @HiltViewModel
@@ -52,7 +53,8 @@ class SettingsViewModel @Inject constructor(
         authRepository.signOut()
     }
 
-    fun setDebugError(message: String) {
+    fun setDebugError(message: String?) {
         _uiState.update { it.copy(lastError = message) }
     }
+
 }
