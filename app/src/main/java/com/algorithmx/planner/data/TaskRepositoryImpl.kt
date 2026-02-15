@@ -9,11 +9,8 @@ import com.google.firebase.firestore.FirebaseFirestore
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
-import java.time.LocalDate
-import java.time.LocalDateTime
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -21,7 +18,9 @@ import javax.inject.Singleton
 class TaskRepositoryImpl @Inject constructor(
     private val taskDao: TaskDao,
     private val categoryDao: CategoryDao,
-    private val firestoreService: FirestoreService,
+    // Note: If you don't have FirestoreService class, remove it from constructor.
+    // If you do, make sure it handles Strings too.
+    // private val firestoreService: FirestoreService,
     private val yieldEngine: YieldEngine
 ) : TaskRepository {
 
@@ -30,26 +29,22 @@ class TaskRepositoryImpl @Inject constructor(
     private val scope = CoroutineScope(Dispatchers.IO)
 
     init {
-        // Start listening for Cloud Changes immediately
         observeCloudChanges()
     }
 
     private fun observeCloudChanges() {
         val uid = auth.currentUser?.uid ?: return
 
-        // Listen to the "tasks" collection in real-time
+        // Listen to "users/{uid}/tasks"
         db.collection("users").document(uid).collection("tasks")
             .addSnapshotListener { snapshot, e ->
                 if (e != null) return@addSnapshotListener
 
                 if (snapshot != null && !snapshot.isEmpty) {
+                    val tasks = snapshot.documents.mapNotNull { doc ->
+                        doc.toObject(Task::class.java)
+                    }
                     scope.launch {
-                        // Convert Firestore documents to Task objects
-                        val tasks = snapshot.documents.mapNotNull { doc ->
-                            // Manual mapping ensures safety, or use doc.toObject(Task::class.java) if configured
-                            doc.toObject(Task::class.java)
-                        }
-                        // Update Local Database (Room is the Source of Truth for UI)
                         if (tasks.isNotEmpty()) {
                             taskDao.insertAll(tasks)
                         }
@@ -58,17 +53,18 @@ class TaskRepositoryImpl @Inject constructor(
             }
     }
 
-    // --- READ METHODS (From Local DB for Speed) ---
+    // --- READ METHODS ---
 
-    override fun getTasksForDate(date: LocalDate): Flow<List<Task>> {
-        return taskDao.getTasksForDate(date)
+    // FIX: Override using String
+    override fun getTasksForDate(dateString: String): Flow<List<Task>> {
+        return taskDao.getTasksForDate(dateString)
     }
 
     override fun getBacklogTasks(): Flow<List<Task>> {
         return taskDao.getBacklogTasks()
     }
 
-    override fun getSubtasks(parentId: String): Flow<List<Task>> { // Changed Int -> String
+    override fun getSubtasks(parentId: String): Flow<List<Task>> {
         return taskDao.getSubtasks(parentId)
     }
 
@@ -76,58 +72,73 @@ class TaskRepositoryImpl @Inject constructor(
         return categoryDao.getAllCategories()
     }
 
-    override fun getWorkloadStats(start: LocalDate, end: LocalDate): Flow<List<WorkloadStat>> {
+    // FIX: Override using String
+    override fun getWorkloadStats(start: String, end: String): Flow<List<WorkloadStat>> {
         return taskDao.getWorkloadStats(start, end)
     }
 
+    // FIX: Override using String
     override suspend fun getTasksInsideZone(
-        date: LocalDate,
-        start: LocalDateTime,
-        end: LocalDateTime
+        date: String,
+        start: String,
+        end: String
     ): Flow<List<Task>> {
         return taskDao.getTasksInsideZone(date, start, end)
     }
 
-    override suspend fun getTaskById(id: String): Task? { // Changed Int -> String
+    override suspend fun getTaskById(id: String): Task? {
         return taskDao.getTaskById(id)
     }
 
-    // --- WRITE METHODS (Save Local + Remote) ---
+    override fun getAllTasks(): Flow<List<Task>> {
+        return taskDao.getAllTasks()
+    }
+
+    override fun getHighYieldTasks(): Flow<List<Task>> {
+        return taskDao.getAllTasks().map { tasks ->
+            tasks.filter { !it.isCompleted }
+                // FIX: Explicitly specify <Task, Double> to fix inference error
+                .sortedByDescending<Task, Double> { task ->
+                    yieldEngine.calculateYieldScore(task)
+                }
+        }
+    }
+
+    // --- WRITE METHODS ---
 
     override suspend fun upsertTask(task: Task) {
-        // 1. Save Local (Instant UI update)
-        taskDao.insertTask(task)
-
-        // 2. Save Cloud (Background Sync)
         val uid = auth.currentUser?.uid
+
+        // 1. Ensure Task has the User ID for Sync
+        val taskToSave = if (uid != null) task.copy(userId = uid) else task
+
+        // 2. Save Local
+        taskDao.insertTask(taskToSave)
+
+        // 3. Save Cloud (Manual write since we removed FirestoreService for simplicity here)
         if (uid != null) {
-            // Ensure the task has the correct owner ID
-            val taskWithUser = task.copy(userId = uid)
-            firestoreService.saveTask(taskWithUser)
+            db.collection("users").document(uid)
+                .collection("tasks").document(task.id)
+                .set(taskToSave)
         }
     }
 
     override suspend fun deleteTask(task: Task) {
         taskDao.deleteTask(task)
-        firestoreService.deleteTask(task.id)
+
+        val uid = auth.currentUser?.uid
+        if (uid != null) {
+            db.collection("users").document(uid)
+                .collection("tasks").document(task.id)
+                .delete()
+        }
     }
 
     override suspend fun upsertCategory(category: Category) {
         categoryDao.insertCategory(category)
-        // Note: You can add firestoreService.saveCategory(category) later if needed
-    }
-    // Add implementation
-    override fun getAllTasks(): Flow<List<Task>> {
-        return taskDao.getAllTasks()
     }
 
     override suspend fun deleteCategory(category: Category) {
         categoryDao.deleteCategory(category)
-    }
-    override fun getHighYieldTasks(): Flow<List<Task>> {
-        return taskDao.getAllTasks().map { tasks ->
-            tasks.filter { !it.isCompleted }
-                .sortedByDescending { yieldEngine.calculateYieldScore(it) }
-        }
     }
 }

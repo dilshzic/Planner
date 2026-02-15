@@ -23,7 +23,7 @@ object AppModule {
     fun provideDatabase(@ApplicationContext context: Context): AppDatabase {
         return Room.databaseBuilder(
             context,
-            AppDatabase::class.java,
+            AppDatabase::class.java, // Ensure this matches your actual DB class name
             "planner_database"
         )
             .fallbackToDestructiveMigration()
@@ -45,40 +45,39 @@ object AppModule {
     @Singleton
     fun provideFirebaseFirestore(): FirebaseFirestore = FirebaseFirestore.getInstance()
 
-    // --- FIXED: FirestoreService (No arguments) ---
+    // --- SERVICES ---
     @Provides
     @Singleton
     fun provideFirestoreService(): FirestoreService {
-        return FirestoreService() // FIXED: Removed arguments to match your class
+        return FirestoreService()
     }
 
-    // --- YIELD ENGINE ---
     @Provides
     @Singleton
     fun provideYieldEngine(): YieldEngine {
         return YieldEngine()
     }
 
-    // --- REPOSITORY (Requires YieldEngine) ---
+    @Provides
+    @Singleton
+    fun provideGeminiParser(): GeminiParser {
+        return GeminiParser()
+    }
+
+    // --- REPOSITORY ---
     @Provides
     @Singleton
     fun provideTaskRepository(
         taskDao: TaskDao,
         categoryDao: CategoryDao,
-        firestoreService: FirestoreService,
-        yieldEngine: YieldEngine // Hilt injects this from provideYieldEngine() above
+        // REMOVED: firestoreService (Your Impl doesn't need it anymore)
+        yieldEngine: YieldEngine
     ): TaskRepository {
         return TaskRepositoryImpl(
-            taskDao,
-            categoryDao,
-            firestoreService,
-            yieldEngine // Pass it to the implementation
+            taskDao = taskDao,
+            categoryDao = categoryDao,
+            // REMOVED: firestoreService
+            yieldEngine = yieldEngine
         )
-    }
-
-    @Provides
-    @Singleton
-    fun provideGeminiParser(): GeminiParser {
-        return GeminiParser()
     }
 }

@@ -7,32 +7,23 @@ import javax.inject.Inject
 
 class YieldEngine @Inject constructor() {
 
-    fun calculateYieldScore(task: Task): Int {
-        if (task.isCompleted) return 0
-        
-        // 1. Base Priority Score (0-30 points)
-        // Priority 1 = 10pts, 2 = 20pts, 3 = 30pts
-        val baseScore = task.priority * 10
+    // --- FIX: Ensure name is 'calculateYieldScore' and returns 'Double' ---
+    fun calculateYieldScore(task: Task): Double {
+        var score = task.priority * 10.0
 
-        // 2. Urgency Score (0-70 points)
-        val urgencyScore = calculateUrgency(task.deadline)
+        // Parse String date back to LocalDate for math
+        val deadlineDate = try {
+            task.deadline?.let { LocalDate.parse(it) }
+        } catch (e: Exception) { null }
 
-        return baseScore + urgencyScore
-    }
-
-    private fun calculateUrgency(deadline: LocalDate?): Int {
-        if (deadline == null) return 0 // No deadline = Low urgency
-
-        val today = LocalDate.now()
-        val daysUntil = ChronoUnit.DAYS.between(today, deadline)
-
-        return when {
-            daysUntil < 0 -> 70 // Overdue! Max urgency
-            daysUntil == 0L -> 70 // Due today!
-            daysUntil <= 3 -> 60 // Due in 3 days (Exam mode)
-            daysUntil <= 7 -> 40 // Due in a week
-            daysUntil <= 14 -> 20 // Due in 2 weeks
-            else -> 5 // Far future
+        if (deadlineDate != null) {
+            val daysUntil = ChronoUnit.DAYS.between(LocalDate.now(), deadlineDate)
+            if (daysUntil <= 3) score += 50.0 // Urgent
+            if (daysUntil <= 7) score += 20.0
         }
+
+        // Add more logic here (e.g., if task.isZone, score -= 100)
+
+        return score
     }
 }

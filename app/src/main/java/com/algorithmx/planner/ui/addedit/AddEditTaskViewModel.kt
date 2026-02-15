@@ -22,10 +22,10 @@ data class AddEditTaskUiState(
     val title: String = "",
     val description: String = "",
     val priority: Int = 1,
-    val selectedDate: LocalDate? = LocalDate.now(), // Default to today
+    val selectedDate: LocalDate? = LocalDate.now(), // UI still uses LocalDate
     val selectedTime: LocalTime? = null,
-    val recurrenceRule: String? = null, // "FREQ=DAILY", etc.
-    val subtasks: List<Task> = emptyList(), // List of child tasks
+    val recurrenceRule: String? = null,
+    val subtasks: List<Task> = emptyList(),
     val isLoading: Boolean = false,
     val isTaskSaved: Boolean = false
 )
@@ -38,7 +38,6 @@ class AddEditTaskViewModel @Inject constructor(
 
     private val taskId: String = savedStateHandle["taskId"] ?: "new"
 
-    // If it's a new task, we generate an ID upfront so we can link subtasks to it immediately
     private val currentTaskId = if (taskId == "new") UUID.randomUUID().toString() else taskId
 
     private val _uiState = MutableStateFlow(AddEditTaskUiState())
@@ -58,13 +57,23 @@ class AddEditTaskViewModel @Inject constructor(
                 // Load Subtasks
                 val subtasks = repository.getSubtasks(id).first()
 
+                // --- FIX STARTS HERE: Parse Strings back to Objects ---
+                val parsedDate = task.scheduledDate?.let {
+                    try { LocalDate.parse(it) } catch(e: Exception) { null }
+                }
+
+                val parsedTime = task.startDateTime?.let {
+                    try { LocalDateTime.parse(it).toLocalTime() } catch(e: Exception) { null }
+                }
+                // --- FIX ENDS HERE ---
+
                 _uiState.update {
                     it.copy(
                         title = task.title,
                         description = task.description,
                         priority = task.priority,
-                        selectedDate = task.scheduledDate,
-                        selectedTime = task.startDateTime?.toLocalTime(),
+                        selectedDate = parsedDate, // Assign parsed object
+                        selectedTime = parsedTime, // Assign parsed object
                         recurrenceRule = task.recurrenceRule,
                         subtasks = subtasks,
                         isLoading = false
@@ -108,7 +117,7 @@ class AddEditTaskViewModel @Inject constructor(
         val newSubtask = Task(
             id = UUID.randomUUID().toString(),
             title = title,
-            parentId = currentTaskId, // Link to the main task
+            parentId = currentTaskId,
             categoryId = "SUB",
             isCompleted = false
         )
@@ -120,10 +129,9 @@ class AddEditTaskViewModel @Inject constructor(
         _uiState.update { state ->
             state.copy(subtasks = state.subtasks.filter { it.id != subtaskId })
         }
-        // Also remove from DB if we are editing an existing task
         if (taskId != "new") {
             viewModelScope.launch {
-                // repository.deleteTask(subtaskId) // You'll need to add this method to Repo if missing
+                // repository.deleteTask(subtaskId)
             }
         }
     }
@@ -136,7 +144,7 @@ class AddEditTaskViewModel @Inject constructor(
         viewModelScope.launch {
             val state = _uiState.value
 
-            // 1. Construct Main Task
+            // Construct startDateTime for Logic
             val startDateTime = if (state.selectedDate != null && state.selectedTime != null) {
                 LocalDateTime.of(state.selectedDate, state.selectedTime)
             } else null
@@ -146,18 +154,19 @@ class AddEditTaskViewModel @Inject constructor(
                 title = state.title,
                 description = state.description,
                 priority = state.priority,
-                categoryId = "General", // Default category
-                scheduledDate = state.selectedDate,
-                startDateTime = startDateTime,
+                categoryId = "General",
+
+                // --- SAVING: Convert Objects to Strings ---
+                scheduledDate = state.selectedDate?.toString(),
+                startDateTime = startDateTime?.toString(),
+
                 recurrenceRule = state.recurrenceRule,
-                durationMinutes = 60, // Default duration
+                durationMinutes = 60,
                 updatedAt = System.currentTimeMillis()
             )
 
-            // 2. Save Main Task
             repository.upsertTask(mainTask)
 
-            // 3. Save All Subtasks
             state.subtasks.forEach { sub ->
                 repository.upsertTask(sub)
             }

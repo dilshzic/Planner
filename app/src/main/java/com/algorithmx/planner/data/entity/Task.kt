@@ -5,38 +5,51 @@ import androidx.room.PrimaryKey
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.util.UUID
+
+// Helper for Stats
 data class WorkloadStat(
-    val date: LocalDate,
-    val totalMinutes: Int,
-    val taskCount: Int
+    val date: String = LocalDate.now().toString(),
+    val totalMinutes: Int = 0,
+    val taskCount: Int = 0
 )
+
 @Entity(tableName = "tasks")
 data class Task(
-    // CHANGED: String ID with random UUID default
-    @PrimaryKey val id: String = UUID.randomUUID().toString(),
+    @PrimaryKey
+    val id: String = UUID.randomUUID().toString(),
 
-    val title: String,
+    val title: String = "",
     val description: String = "",
-    val categoryId: String, // Changed to String to match Category.id
+    val categoryId: String = "General",
     val priority: Int = 1,
 
-    val parentId: String? = null, // Changed to String
+    val parentId: String? = null,
     val isZone: Boolean = false,
 
-    val scheduledDate: LocalDate? = null,
-    val startDateTime: LocalDateTime? = null,
-    val endDateTime: LocalDateTime? = null,
+    // --- CHANGED: Store dates as Strings (ISO-8601 format: "2026-02-16") ---
+    val scheduledDate: String? = null,      // Was LocalDate?
+    val startDateTime: String? = null,      // Was LocalDateTime?
+    val endDateTime: String? = null,        // Was LocalDateTime?
+    val completedDate: String? = null,      // Was LocalDateTime?
+    val deadline: String? = null,           // Was LocalDate?
+
     val durationMinutes: Int = 30,
-
     val recurrenceRule: String? = null,
-    val lastGeneratedDate: LocalDate? = null,
-
+    val lastGeneratedDate: String? = null,
     val isCompleted: Boolean = false,
-    val completedDate: LocalDateTime? = null,
 
-    // NEW: The "Exam Date" or submission deadline
-    val deadline: LocalDate? = null,
-    // NEW: Link to specific user for Cloud Sync
     val userId: String? = null,
     val updatedAt: Long = System.currentTimeMillis()
-)
+) {
+    // --- HELPER PROPERTIES (Use these in your UI/ViewModel) ---
+
+    // Convert String -> LocalDate
+    fun getScheduledLocalDate(): LocalDate? {
+        return try { scheduledDate?.let { LocalDate.parse(it) } } catch (e: Exception) { null }
+    }
+
+    // Convert String -> LocalDateTime
+    fun getStartLocalDateTime(): LocalDateTime? {
+        return try { startDateTime?.let { LocalDateTime.parse(it) } } catch (e: Exception) { null }
+    }
+}

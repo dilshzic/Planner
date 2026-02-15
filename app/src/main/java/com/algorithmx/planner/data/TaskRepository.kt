@@ -4,31 +4,33 @@ import com.algorithmx.planner.data.entity.Category
 import com.algorithmx.planner.data.entity.Task
 import com.algorithmx.planner.data.entity.WorkloadStat
 import kotlinx.coroutines.flow.Flow
-import java.time.LocalDate
-import java.time.LocalDateTime
 
 interface TaskRepository {
 
     // --- Core Data Flows ---
-    fun getTasksForDate(date: LocalDate): Flow<List<Task>>
+    // FIX: Change LocalDate -> String
+    fun getTasksForDate(date: String): Flow<List<Task>>
+
     fun getBacklogTasks(): Flow<List<Task>>
-    fun getSubtasks(parentId: String): Flow<List<Task>> // Changed Int -> String
+    fun getSubtasks(parentId: String): Flow<List<Task>>
     fun getAllCategories(): Flow<List<Category>>
-    
+
     // --- Smart Logic ---
-    fun getWorkloadStats(start: LocalDate, end: LocalDate): Flow<List<WorkloadStat>>
-    suspend fun getTasksInsideZone(date: LocalDate, start: LocalDateTime, end: LocalDateTime): Flow<List<Task>>
+    // FIX: Change LocalDate -> String
+    fun getWorkloadStats(start: String, end: String): Flow<List<WorkloadStat>>
+
+    // FIX: Change LocalDate/LocalDateTime -> String
+    suspend fun getTasksInsideZone(date: String, start: String, end: String): Flow<List<Task>>
 
     // --- Actions ---
     suspend fun upsertTask(task: Task)
     suspend fun deleteTask(task: Task)
     suspend fun upsertCategory(category: Category)
     suspend fun deleteCategory(category: Category)
-    
+
     // --- Special ---
     suspend fun getTaskById(id: String): Task?
 
     fun getHighYieldTasks(): Flow<List<Task>>
-    // Add to interface
     fun getAllTasks(): Flow<List<Task>>
 }

@@ -4,189 +4,84 @@ import android.content.Context
 import androidx.hilt.work.HiltWorker
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
-import com.algorithmx.planner.data.TaskDao
-import com.algorithmx.planner.data.entity.Task
-import com.algorithmx.planner.logic.YieldEngine
+import com.algorithmx.planner.data.TaskRepository
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.withContext
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.LocalTime
-import java.time.temporal.ChronoUnit
-import java.util.UUID
 
 @HiltWorker
 class DailySchedulerWorker @AssistedInject constructor(
     @Assisted appContext: Context,
     @Assisted workerParams: WorkerParameters,
-    private val taskDao: TaskDao,
-    private val yieldEngine: YieldEngine // Inject the Yield Logic
+    private val repository: TaskRepository
 ) : CoroutineWorker(appContext, workerParams) {
 
-    private val FORECAST_DAYS = 30L
+    override suspend fun doWork(): Result = withContext(Dispatchers.IO) {
+        try {
+            val today = LocalDate.now()
+            val todayStr = today.toString()
 
-    override suspend fun doWork(): Result {
-        val today = LocalDate.now()
+            // 1. Get Tasks that are already scheduled for today (Zones/Appointments)
+            // We use .first() to get the current snapshot of the Flow
+            val existingTasks = repository.getTasksForDate(todayStr).first()
+                .sortedBy { it.startDateTime } // sort by String works for ISO format
 
-        // PART 1: Generate Recurring Tasks (Blueprints -> Instances)
-        generateRecurringInstances(today)
+            // 2. Get High Priority Backlog items
+            val backlog = repository.getBacklogTasks().first()
+                .take(3) // Auto-schedule top 3
 
-        // PART 2: Smart Auto-Schedule Today's Gaps
-        autoScheduleDay(today)
+            var currentSlot = LocalDateTime.of(today, LocalTime.of(8, 0)) // Start 8:00 AM
+            val dayEnd = LocalDateTime.of(today, LocalTime.of(22, 0)) // End 10:00 PM
 
-        return Result.success()
-    }
+            for (task in backlog) {
+                // Find a slot
+                val taskDuration = task.durationMinutes.toLong()
+                var slotFound = false
 
-    // --- PART 1: Recurrence Logic (Existing) ---
-    private suspend fun generateRecurringInstances(today: LocalDate) {
-        val templates = taskDao.getAllTemplates()
-        for (dayOffset in 0..FORECAST_DAYS) {
-            val targetDate = today.plusDays(dayOffset)
-            templates.forEach { template ->
-                if (shouldSpawnOnDate(template, targetDate)) {
-                    val exists = taskDao.isInstanceGenerated(template.id, targetDate) > 0
-                    if (!exists) {
-                        spawnTask(template, targetDate)
+                while (currentSlot.plusMinutes(taskDuration).isBefore(dayEnd)) {
+                    val potentialEnd = currentSlot.plusMinutes(taskDuration)
+
+                    // Check for collision
+                    val hasCollision = existingTasks.any { existing ->
+                        val existStart = existing.startDateTime?.let { try { LocalDateTime.parse(it) } catch(e:Exception){null} }
+                        val existEnd = existing.endDateTime?.let { try { LocalDateTime.parse(it) } catch(e:Exception){null} }
+
+                        if (existStart != null && existEnd != null) {
+                            // Logic: (StartA < EndB) and (EndA > StartB)
+                            currentSlot.isBefore(existEnd) && potentialEnd.isAfter(existStart)
+                        } else false
+                    }
+
+                    if (!hasCollision) {
+                        // Found a spot!
+                        val updatedTask = task.copy(
+                            scheduledDate = todayStr,
+                            startDateTime = currentSlot.toString(),
+                            endDateTime = potentialEnd.toString(),
+                            isZone = false
+                        )
+                        repository.upsertTask(updatedTask)
+
+                        // Move pointer
+                        currentSlot = potentialEnd
+                        slotFound = true
+                        break
+                    } else {
+                        // Move pointer by 15 mins to try again
+                        currentSlot = currentSlot.plusMinutes(15)
                     }
                 }
             }
+
+            Result.success()
+        } catch (e: Exception) {
+            e.printStackTrace()
+            Result.failure()
         }
-    }
-
-    // --- PART 2: Auto-Scheduler Logic (NEW) ---
-    private suspend fun autoScheduleDay(date: LocalDate) {
-        // 1. Get Fixed Schedule (Zones/Appointments)
-        val fixedTasks = taskDao.getScheduledTasksSync(date)
-
-        // 2. Define "Working Hours" (e.g., 8 AM to 10 PM)
-        val dayStart = LocalDateTime.of(date, LocalTime.of(8, 0))
-        val dayEnd = LocalDateTime.of(date, LocalTime.of(22, 0))
-
-        // 3. Find Free Slots (Gaps between zones)
-        val freeSlots = findFreeSlots(fixedTasks, dayStart, dayEnd)
-
-        // 4. Get Backlog & Sort by Yield Score
-        val backlog = taskDao.getBacklogTasksSync()
-            .filter { !it.isCompleted }
-            .sortedByDescending { yieldEngine.calculateYieldScore(it) } // Prioritize High Yield
-
-        // 5. Fill Slots (Greedy Algorithm)
-        val tasksToUpdate = mutableListOf<Task>()
-
-        for (slot in freeSlots) {
-            var slotRemaining = slot.durationMinutes
-            var currentTime = slot.start
-
-            for (task in backlog) {
-                // If task fits in the remaining slot time and isn't already scheduled
-                if (task.durationMinutes <= slotRemaining && !tasksToUpdate.contains(task)) {
-
-                    // Schedule it!
-                    val scheduledTask = task.copy(
-                        scheduledDate = date,
-                        startDateTime = currentTime,
-                        endDateTime = currentTime.plusMinutes(task.durationMinutes.toLong()),
-                        updatedAt = System.currentTimeMillis()
-                    )
-
-                    tasksToUpdate.add(scheduledTask)
-
-                    // Advance time
-                    currentTime = currentTime.plusMinutes(task.durationMinutes.toLong())
-                    slotRemaining -= task.durationMinutes
-                }
-            }
-        }
-
-        // 6. Bulk Update Database
-        if (tasksToUpdate.isNotEmpty()) {
-            taskDao.insertAll(tasksToUpdate)
-        }
-    }
-
-    data class TimeSlot(val start: LocalDateTime, val durationMinutes: Long)
-
-    private fun findFreeSlots(
-        tasks: List<Task>,
-        dayStart: LocalDateTime,
-        dayEnd: LocalDateTime
-    ): List<TimeSlot> {
-        val slots = mutableListOf<TimeSlot>()
-        var lastEndTime = dayStart
-
-        for (task in tasks) {
-            val taskStart = task.startDateTime ?: continue
-            val taskEnd = task.endDateTime ?: continue
-
-            // Gap found?
-            if (taskStart.isAfter(lastEndTime)) {
-                val duration = ChronoUnit.MINUTES.between(lastEndTime, taskStart)
-                if (duration >= 30) { // Only consider gaps > 30 mins
-                    slots.add(TimeSlot(lastEndTime, duration))
-                }
-            }
-            // Move pointer
-            if (taskEnd.isAfter(lastEndTime)) {
-                lastEndTime = taskEnd
-            }
-        }
-
-        // Check final gap (End of day)
-        if (dayEnd.isAfter(lastEndTime)) {
-            val duration = ChronoUnit.MINUTES.between(lastEndTime, dayEnd)
-            if (duration >= 30) {
-                slots.add(TimeSlot(lastEndTime, duration))
-            }
-        }
-
-        return slots
-    }
-
-    // ... (Helper methods for Recurrence: shouldSpawnOnDate, getInterval, spawnTask remain the same) ...
-    private fun shouldSpawnOnDate(template: Task, targetDate: LocalDate): Boolean {
-        val rule = template.recurrenceRule ?: return false
-        val anchorDate = template.scheduledDate ?: LocalDate.now()
-        if (targetDate.isBefore(anchorDate)) return false
-
-        return when {
-            rule.contains("FREQ=DAILY") -> {
-                val interval = getInterval(rule)
-                val daysSince = ChronoUnit.DAYS.between(anchorDate, targetDate)
-                daysSince % interval == 0L
-            }
-            rule.contains("FREQ=WEEKLY") -> {
-                val dayName = targetDate.dayOfWeek.name.take(2)
-                rule.contains(dayName)
-            }
-            rule.contains("FREQ=MONTHLY") && rule.contains("BYMONTHDAY") -> {
-                val dayOfMonth = targetDate.dayOfMonth.toString()
-                val targetDays = rule.substringAfter("BYMONTHDAY=").substringBefore(";").split(",")
-                targetDays.contains(dayOfMonth)
-            }
-            else -> false
-        }
-    }
-
-    private fun getInterval(rule: String): Long {
-        return if (rule.contains("INTERVAL=")) {
-            rule.substringAfter("INTERVAL=").substringBefore(";").toLongOrNull() ?: 1L
-        } else {
-            1L
-        }
-    }
-
-    private suspend fun spawnTask(template: Task, date: LocalDate) {
-        val newTask = template.copy(
-            id = UUID.randomUUID().toString(),
-            recurrenceRule = null,
-            parentId = template.id,
-            scheduledDate = date,
-            lastGeneratedDate = null,
-            startDateTime = template.startDateTime?.let { LocalDateTime.of(date, it.toLocalTime()) },
-            endDateTime = template.endDateTime?.let { LocalDateTime.of(date, it.toLocalTime()) },
-            isCompleted = false,
-            updatedAt = System.currentTimeMillis()
-        )
-        taskDao.insertTask(newTask)
     }
 }

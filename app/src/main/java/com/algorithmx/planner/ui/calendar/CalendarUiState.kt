@@ -70,7 +70,8 @@ class CalendarViewModel @Inject constructor(
 
         while (!currentDate.isAfter(endGrid)) {
             // Filter tasks for this specific day
-            val dayTasks = allTasks.filter { it.scheduledDate == currentDate }
+            val dateString = currentDate.toString()
+            val dayTasks = allTasks.filter { it.scheduledDate == dateString }
             
             val zones = dayTasks.filter { it.isZone }
             val regularTasks = dayTasks.filter { !it.isZone && !it.isCompleted }

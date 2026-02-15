@@ -34,13 +34,17 @@ class TriageViewModel @Inject constructor(
     // --- Actions ---
 
     fun onSwipeRight(task: Task) {
-        // "Admit": Schedule for Today
         viewModelScope.launch {
-            val updated = task.copy(
-                scheduledDate = LocalDate.now(),
-                isZone = false // Ensure it's a task, not a zone
+            // FIX: Convert LocalDate.now() to String
+            val todayString = LocalDate.now().toString()
+
+            repository.upsertTask(
+                task.copy(
+                    scheduledDate = todayString, // Was: LocalDate.now()
+                    isZone = false
+                )
             )
-            repository.upsertTask(updated)
+            // ...
         }
     }
 

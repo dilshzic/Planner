@@ -46,9 +46,6 @@ class CalendarSyncWorker @AssistedInject constructor(
             val startMillis = LocalDate.now().atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
             val endMillis = LocalDate.now().plusDays(1).atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
 
-            val selection = "${CalendarContract.Instances.BEGIN} >= ? AND ${CalendarContract.Instances.BEGIN} <= ?"
-            val selectionArgs = arrayOf(startMillis.toString(), endMillis.toString())
-
             // Query the "Instances" table (expands recurring events)
             val builder = CalendarContract.Instances.CONTENT_URI.buildUpon()
             android.content.ContentUris.appendId(builder, startMillis)
@@ -79,8 +76,6 @@ class CalendarSyncWorker @AssistedInject constructor(
                     val duration = java.time.Duration.between(startDt, endDt).toMinutes().toInt()
 
                     // 3. Create "Zone" Task
-                    // Check if it already exists to avoid duplicates (naive check by title + time)
-                    //Ideally, we store the calendar event ID, but for now we just upsert.
                     val zoneTask = Task(
                         id = "cal_${begin}_${title.hashCode()}", // Deterministic ID
                         title = title,
@@ -88,8 +83,12 @@ class CalendarSyncWorker @AssistedInject constructor(
                         categoryId = "ZONE", // Special category
                         priority = 3, // Zones are mandatory
                         isZone = true,
-                        scheduledDate = startDt.toLocalDate(),
-                        startDateTime = startDt,
+
+                        // --- FIX: Convert Dates to Strings ---
+                        scheduledDate = startDt.toLocalDate().toString(), // e.g., "2026-02-16"
+                        startDateTime = startDt.toString(),               // e.g., "2026-02-16T14:00"
+                        endDateTime = endDt.toString(),                   // Store the end time too!
+
                         durationMinutes = duration,
                         isCompleted = false
                     )
