@@ -1,6 +1,8 @@
 package com.algorithmx.planner.data.entity
 
 import androidx.room.Entity
+import androidx.room.ForeignKey
+import androidx.room.Index
 import androidx.room.PrimaryKey
 import java.time.LocalDate
 import java.time.LocalDateTime
@@ -13,7 +15,20 @@ data class WorkloadStat(
     val taskCount: Int = 0
 )
 
-@Entity(tableName = "tasks")
+@Entity(
+    tableName = "tasks",
+    // 1. Define the Relationship
+    foreignKeys = [
+        ForeignKey(
+            entity = Task::class,
+            parentColumns = ["id"],
+            childColumns = ["parentId"],
+            onDelete = ForeignKey.CASCADE // <--- The Magic: Auto-delete subtasks
+        )
+    ],
+    // 2. Index the column for speed
+    indices = [Index(value = ["parentId"])]
+)
 data class Task(
     @PrimaryKey
     val id: String = UUID.randomUUID().toString(),

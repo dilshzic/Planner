@@ -13,4 +13,5 @@ sealed interface AddEditTaskEvent {
     data class CategoryChanged(val categoryId: String) : AddEditTaskEvent
     data class RecurrenceChanged(val rule: String?) : AddEditTaskEvent
     data object SaveTask : AddEditTaskEvent
+    data class OnDurationChange(val minutes: Int) : AddEditTaskEvent()
 }

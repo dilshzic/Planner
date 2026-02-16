@@ -5,6 +5,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.algorithmx.planner.data.TaskRepository
 import com.algorithmx.planner.data.entity.Task
+import com.algorithmx.planner.logic.TimeBlockMath
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -22,12 +23,16 @@ data class AddEditTaskUiState(
     val title: String = "",
     val description: String = "",
     val priority: Int = 1,
-    val selectedDate: LocalDate? = LocalDate.now(), // UI still uses LocalDate
+    val selectedDate: LocalDate? = LocalDate.now(),
     val selectedTime: LocalTime? = null,
     val recurrenceRule: String? = null,
     val subtasks: List<Task> = emptyList(),
     val isLoading: Boolean = false,
-    val isTaskSaved: Boolean = false
+    val isTaskSaved: Boolean = false,
+
+    // --- Time Block Fields ---
+    val durationMinutes: Int = 30, // Default duration
+    val estimatedBlocks: Int = 6   // Default blocks (30m / 5m)
 )
 
 @HiltViewModel
@@ -37,7 +42,6 @@ class AddEditTaskViewModel @Inject constructor(
 ) : ViewModel() {
 
     private val taskId: String = savedStateHandle["taskId"] ?: "new"
-
     private val currentTaskId = if (taskId == "new") UUID.randomUUID().toString() else taskId
 
     private val _uiState = MutableStateFlow(AddEditTaskUiState())
@@ -53,29 +57,32 @@ class AddEditTaskViewModel @Inject constructor(
         viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true) }
             val task = repository.getTaskById(id)
+
             if (task != null) {
-                // Load Subtasks
                 val subtasks = repository.getSubtasks(id).first()
 
-                // --- FIX STARTS HERE: Parse Strings back to Objects ---
+                // Parse Dates (String -> Object)
                 val parsedDate = task.scheduledDate?.let {
                     try { LocalDate.parse(it) } catch(e: Exception) { null }
                 }
-
                 val parsedTime = task.startDateTime?.let {
                     try { LocalDateTime.parse(it).toLocalTime() } catch(e: Exception) { null }
                 }
-                // --- FIX ENDS HERE ---
 
                 _uiState.update {
                     it.copy(
                         title = task.title,
                         description = task.description,
                         priority = task.priority,
-                        selectedDate = parsedDate, // Assign parsed object
-                        selectedTime = parsedTime, // Assign parsed object
+                        selectedDate = parsedDate,
+                        selectedTime = parsedTime,
                         recurrenceRule = task.recurrenceRule,
                         subtasks = subtasks,
+
+                        // Load Duration & Recalculate Blocks
+                        durationMinutes = task.durationMinutes,
+                        estimatedBlocks = TimeBlockMath.minutesToBlocks(task.durationMinutes),
+
                         isLoading = false
                     )
                 }
@@ -83,7 +90,26 @@ class AddEditTaskViewModel @Inject constructor(
         }
     }
 
-    // --- User Actions ---
+    // --- Event Handler ---
+
+    fun onEvent(event: AddEditTaskEvent) {
+        when(event) {
+            is AddEditTaskEvent.OnDurationChange -> {
+                // Update Minutes AND Blocks simultaneously
+                val blocks = TimeBlockMath.minutesToBlocks(event.minutes)
+                _uiState.update {
+                    it.copy(
+                        durationMinutes = event.minutes,
+                        estimatedBlocks = blocks
+                    )
+                }
+            }
+            // Add other event handlers here if you move actions to Sealed Class
+            else -> {}
+        }
+    }
+
+    // --- Simple Actions (Can be moved to onEvent later) ---
 
     fun onTitleChange(newTitle: String) {
         _uiState.update { it.copy(title = newTitle) }
@@ -119,19 +145,28 @@ class AddEditTaskViewModel @Inject constructor(
             title = title,
             parentId = currentTaskId,
             categoryId = "SUB",
-            isCompleted = false
+            isCompleted = false,
+            // Subtasks inherit date for now, or stay null
+            scheduledDate = _uiState.value.selectedDate?.toString()
         )
 
         _uiState.update { it.copy(subtasks = it.subtasks + newSubtask) }
+
+        // Auto-save subtask to DB so it persists even if main task isn't saved yet?
+        // Usually safer to save only on "Save", but here we update local list.
     }
 
     fun onDeleteSubtask(subtaskId: String) {
         _uiState.update { state ->
             state.copy(subtasks = state.subtasks.filter { it.id != subtaskId })
         }
+        // If editing existing task, delete from DB immediately
         if (taskId != "new") {
             viewModelScope.launch {
-                // repository.deleteTask(subtaskId)
+                val taskToDelete = repository.getTaskById(subtaskId)
+                if (taskToDelete != null) {
+                    repository.deleteTask(taskToDelete)
+                }
             }
         }
     }
@@ -144,9 +179,9 @@ class AddEditTaskViewModel @Inject constructor(
         viewModelScope.launch {
             val state = _uiState.value
 
-            // Construct startDateTime for Logic
-            val startDateTime = if (state.selectedDate != null && state.selectedTime != null) {
-                LocalDateTime.of(state.selectedDate, state.selectedTime)
+            // Combine Date + Time -> LocalDateTime -> String
+            val startDateTimeStr = if (state.selectedDate != null && state.selectedTime != null) {
+                LocalDateTime.of(state.selectedDate, state.selectedTime).toString()
             } else null
 
             val mainTask = Task(
@@ -154,21 +189,30 @@ class AddEditTaskViewModel @Inject constructor(
                 title = state.title,
                 description = state.description,
                 priority = state.priority,
-                categoryId = "General",
+                categoryId = "General", // Default category
 
-                // --- SAVING: Convert Objects to Strings ---
+                // Date logic
                 scheduledDate = state.selectedDate?.toString(),
-                startDateTime = startDateTime?.toString(),
+                startDateTime = startDateTimeStr,
+
+                // Time Block logic
+                durationMinutes = state.durationMinutes,
+                estimatedBlocks = state.estimatedBlocks,
 
                 recurrenceRule = state.recurrenceRule,
-                durationMinutes = 60,
                 updatedAt = System.currentTimeMillis()
             )
 
+            // 1. Save Main Task
             repository.upsertTask(mainTask)
 
+            // 2. Save Subtasks (Ensure they are linked)
             state.subtasks.forEach { sub ->
-                repository.upsertTask(sub)
+                val linkedSub = sub.copy(
+                    parentId = currentTaskId,
+                    scheduledDate = state.selectedDate?.toString() // Sync date
+                )
+                repository.upsertTask(linkedSub)
             }
 
             _uiState.update { it.copy(isTaskSaved = true) }

@@ -1,5 +1,7 @@
 package com.algorithmx.planner.ui.home
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -9,95 +11,191 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.AutoAwesome
-import androidx.compose.material.icons.filled.ChevronLeft
-import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.filled.ArrowForward
+import androidx.compose.material.icons.filled.CalendarMonth
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowRight
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
-import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.algorithmx.planner.data.entity.Task
+import com.algorithmx.planner.data.entity.TaskWithSubtasks // Import new relation class
 import java.time.format.DateTimeFormatter
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HomeScreen(
-    isTablet: Boolean, // <--- Now we will use this!
-    viewModel: HomeViewModel = hiltViewModel(),
-    onTaskClick: (String) -> Unit,
-    onNavigateToAdd: () -> Unit
+    onNavigateToEdit: (String) -> Unit,
+    viewModel: HomeViewModel = hiltViewModel()
 ) {
     val state by viewModel.uiState.collectAsState()
 
     Scaffold(
+        topBar = {
+            HomeTopBar(
+                selectedDate = state.selectedDate.format(DateTimeFormatter.ofPattern("EEE, MMM d")),
+                status = state.workloadStatus,
+                totalMinutes = state.totalMinutes
+            )
+        },
         floatingActionButton = {
-            FloatingActionButton(onClick = onNavigateToAdd) {
+            FloatingActionButton(onClick = { onNavigateToEdit("new") }) {
                 Icon(Icons.Default.Add, contentDescription = "Add Task")
             }
         }
     ) { padding ->
-        // 1. USE 'isTablet' to center content on large screens
-        Box(
+        Column(
             modifier = Modifier
                 .padding(padding)
-                .fillMaxSize(),
-            contentAlignment = if (isTablet) Alignment.TopCenter else Alignment.TopStart
+                .fillMaxSize()
         ) {
+            // 1. QUICK ADD INPUT
+            QuickAddSection(
+                text = state.quickAddText,
+                onTextChange = viewModel::onQuickAddTextChanged,
+                onAdd = viewModel::onQuickAdd,
+                isLoading = state.isLoading
+            )
+
+            // 2. TASK LIST (Hierarchy)
+            if (state.tasks.isEmpty()) {
+                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    Text("No tasks for today. Enjoy!", color = MaterialTheme.colorScheme.secondary)
+                }
+            } else {
+                LazyColumn(
+                    contentPadding = PaddingValues(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    // Loop through TaskWithSubtasks (Parent + Children)
+                    items(state.tasks) { item ->
+                        ExpandableTaskItem(
+                            item = item,
+                            onToggleCheck = viewModel::onTaskCheckChanged,
+                            onClick = { onNavigateToEdit(item.task.id) }
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+// --- COMPONENT: Expandable Task Item (Parent + Children) ---
+
+@Composable
+fun ExpandableTaskItem(
+    item: TaskWithSubtasks,
+    onToggleCheck: (Task, Boolean) -> Unit,
+    onClick: () -> Unit
+) {
+    var isExpanded by remember { mutableStateOf(true) } // Default open to see subtasks
+    val hasSubtasks = item.subtasks.isNotEmpty()
+
+    Column {
+        // 1. Parent Task
+        TaskCard(
+            task = item.task,
+            onCheckedChange = { isChecked -> onToggleCheck(item.task, isChecked) },
+            onClick = onClick,
+            hasSubtasks = hasSubtasks,
+            isExpanded = isExpanded,
+            onExpandToggle = { isExpanded = !isExpanded }
+        )
+
+        // 2. Children Tasks (Indented)
+        AnimatedVisibility(visible = isExpanded && hasSubtasks) {
             Column(
                 modifier = Modifier
-                    .fillMaxHeight()
-                    // Constrain width on tablets so lines aren't too long to read
-                    .widthIn(max = if (isTablet) 600.dp else Dp.Unspecified)
+                    .padding(start = 32.dp, top = 4.dp) // Indentation
             ) {
+                item.subtasks.forEach { child ->
+                    // Reuse TaskCard but smaller/simpler
+                    TaskCard(
+                        task = child,
+                        onCheckedChange = { isChecked -> onToggleCheck(child, isChecked) },
+                        onClick = { /* Navigate to child edit if needed */ },
+                        isSubtask = true
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                }
+            }
+        }
+    }
+}
 
-                // --- Header ---
-                HomeHeader(
-                    date = state.selectedDate,
-                    status = state.workloadStatus,
-                    onPrev = { viewModel.onDateChange(state.selectedDate.minusDays(1)) },
-                    onNext = { viewModel.onDateChange(state.selectedDate.plusDays(1)) }
+@Composable
+fun TaskCard(
+    task: Task,
+    onCheckedChange: (Boolean) -> Unit,
+    onClick: () -> Unit,
+    hasSubtasks: Boolean = false,
+    isExpanded: Boolean = false,
+    onExpandToggle: () -> Unit = {},
+    isSubtask: Boolean = false
+) {
+    // Dim completed tasks
+    val alpha = if (task.isCompleted) 0.5f else 1f
+
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick),
+        colors = CardDefaults.cardColors(
+            containerColor = if (isSubtask) MaterialTheme.colorScheme.surface else MaterialTheme.colorScheme.surfaceContainer
+        ),
+        elevation = CardDefaults.cardElevation(defaultElevation = if(isSubtask) 0.dp else 2.dp)
+    ) {
+        Row(
+            modifier = Modifier
+                .padding(12.dp)
+                .fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            // Checkbox
+            Checkbox(
+                checked = task.isCompleted,
+                onCheckedChange = onCheckedChange,
+                modifier = Modifier.size(24.dp)
+            )
+
+            Spacer(modifier = Modifier.width(12.dp))
+
+            // Text Info
+            Column(modifier = Modifier.weight(1f).alpha(alpha)) {
+                Text(
+                    text = task.title,
+                    style = if (isSubtask) MaterialTheme.typography.bodyMedium else MaterialTheme.typography.titleMedium,
+                    textDecoration = if (task.isCompleted) TextDecoration.LineThrough else null,
+                    fontWeight = if (isSubtask) FontWeight.Normal else FontWeight.Medium
                 )
+                if (task.durationMinutes > 0) {
+                    Text(
+                        text = "${task.durationMinutes}m • ${task.estimatedBlocks} blocks",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.secondary
+                    )
+                }
+            }
 
-                // --- Brain Dump Input ---
-                BrainDumpInput(
-                    text = state.quickAddText,
-                    isLoading = state.isLoading,
-                    onTextChange = { viewModel.onQuickAddTextChanged(it) },
-                    onAdd = { viewModel.onQuickAdd() }
-                )
-
-                // 2. FIX: Use HorizontalDivider (Material 3 standard)
-                HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
-
-                // --- Timeline List ---
-                if (state.tasks.isEmpty()) {
-                    Box(
-                        modifier = Modifier.fillMaxSize().weight(1f),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Text(
-                                "No plans for ${state.selectedDate.format(DateTimeFormatter.ofPattern("EEEE"))}.",
-                                style = MaterialTheme.typography.bodyLarge
-                            )
-                            Text(
-                                "Use the Quick Add box above!",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.secondary
-                            )
-                        }
-                    }
-                } else {
-                    TimelineList(
-                        tasks = state.tasks,
-                        onTaskClick = onTaskClick,
-                        onCheckChange = viewModel::onTaskCheckChanged
+            // Expand Arrow (Only for Parents)
+            if (hasSubtasks) {
+                IconButton(onClick = onExpandToggle) {
+                    val rotation by animateFloatAsState(if (isExpanded) 180f else 0f)
+                    Icon(
+                        Icons.Default.KeyboardArrowDown,
+                        contentDescription = "Expand",
+                        modifier = Modifier.rotate(rotation)
                     )
                 }
             }
@@ -105,199 +203,69 @@ fun HomeScreen(
     }
 }
 
-// ... (Rest of the file remains the same: BrainDumpInput, HomeHeader, TimelineList, etc.) ...
+// --- Helper Components (Keep these similar to before) ---
+
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun BrainDumpInput(
+fun HomeTopBar(selectedDate: String, status: WorkloadLevel, totalMinutes: Int) {
+    TopAppBar(
+        title = {
+            Column {
+                Text(text = "Timeline", style = MaterialTheme.typography.titleLarge)
+                Text(text = selectedDate, style = MaterialTheme.typography.bodySmall)
+            }
+        },
+        actions = {
+            // Status Badge
+            Surface(
+                color = when(status) {
+                    WorkloadLevel.CASUALTY -> MaterialTheme.colorScheme.error
+                    WorkloadLevel.GRIND -> Color(0xFF4CAF50) // Green
+                    WorkloadLevel.RECOVERY -> Color(0xFFFFC107) // Amber
+                },
+                shape = CircleShape
+            ) {
+                Text(
+                    text = "${totalMinutes / 60}h ${(totalMinutes % 60)}m",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = Color.White,
+                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                )
+            }
+        }
+    )
+}
+
+@Composable
+fun QuickAddSection(
     text: String,
-    isLoading: Boolean,
     onTextChange: (String) -> Unit,
-    onAdd: () -> Unit
+    onAdd: () -> Unit,
+    isLoading: Boolean
 ) {
     Row(
-        verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 8.dp)
+            .padding(horizontal = 16.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically
     ) {
         OutlinedTextField(
             value = text,
             onValueChange = onTextChange,
-            placeholder = { Text("e.g. 'Read Guyton Ch. 4 tomorrow'") },
+            placeholder = { Text("AI Quick Add (e.g. 'Study Cardio 2h')") },
             modifier = Modifier.weight(1f),
-            shape = RoundedCornerShape(12.dp),
             singleLine = true,
             trailingIcon = {
-                if (isLoading) {
-                    CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
-                }
+                if (isLoading) CircularProgressIndicator(modifier = Modifier.size(24.dp))
             }
         )
         Spacer(modifier = Modifier.width(8.dp))
-        IconButton(
-            onClick = onAdd,
-            enabled = text.isNotBlank() && !isLoading,
-            modifier = Modifier
-                .background(MaterialTheme.colorScheme.primaryContainer, CircleShape)
-        ) {
-            Icon(
-                imageVector = Icons.Default.AutoAwesome,
-                contentDescription = "Quick Add",
-                tint = MaterialTheme.colorScheme.onPrimaryContainer
-            )
+        FilledIconButton(onClick = onAdd) {
+            Icon(Icons.Default.ArrowForward, "Add")
         }
     }
 }
 
-@Composable
-fun HomeHeader(
-    date: java.time.LocalDate,
-    status: WorkloadLevel,
-    onPrev: () -> Unit,
-    onNext: () -> Unit
-) {
-    val statusColor = when (status) {
-        WorkloadLevel.CASUALTY -> Color(0xFFEF5350)
-        WorkloadLevel.GRIND -> Color(0xFF66BB6A)
-        WorkloadLevel.RECOVERY -> Color(0xFFFFEE58)
-    }
-
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 8.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
-    ) {
-        Column(modifier = Modifier.padding(16.dp)) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                IconButton(onClick = onPrev) { Icon(Icons.Default.ChevronLeft, null) }
-
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text(
-                        text = date.format(DateTimeFormatter.ofPattern("EEEE, MMM d")),
-                        style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.Bold
-                    )
-                    Text(
-                        text = status.name,
-                        style = MaterialTheme.typography.labelMedium,
-                        color = statusColor,
-                        fontWeight = FontWeight.Black
-                    )
-                }
-
-                IconButton(onClick = onNext) { Icon(Icons.Default.ChevronRight, null) }
-            }
-        }
-    }
-}
-
-@Composable
-fun TimelineList(
-    tasks: List<Task>,
-    onTaskClick: (String) -> Unit,
-    onCheckChange: (Task, Boolean) -> Unit
-) {
-    LazyColumn(
-        contentPadding = PaddingValues(bottom = 80.dp),
-        modifier = Modifier.fillMaxHeight()
-    ) {
-        items(tasks) { task ->
-            if (task.isZone) {
-                ZoneItem(task, onTaskClick)
-            } else {
-                TaskItem(task, onTaskClick, onCheckChange)
-            }
-        }
-    }
-}
-
-@Composable
-fun ZoneItem(task: Task, onClick: (String) -> Unit) {
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 8.dp)
-            .height(80.dp)
-            .clickable { onClick(task.id) },
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Column(modifier = Modifier.width(60.dp)) {
-                Text(
-                    text = task.startDateTime?.format(DateTimeFormatter.ofPattern("HH:mm")) ?: "--:--",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold
-                )
-                Text(
-                    text = "${task.durationMinutes}m",
-                    style = MaterialTheme.typography.bodySmall
-                )
-            }
-
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = task.title,
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold
-                )
-                Text(
-                    text = "ZONE • ${task.categoryId}",
-                    style = MaterialTheme.typography.labelSmall
-                )
-            }
-        }
-    }
-}
-
-@Composable
-fun TaskItem(
-    task: Task,
-    onClick: (String) -> Unit,
-    onCheckChange: (Task, Boolean) -> Unit
-) {
-    val isHighYield = task.priority >= 3
-
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 4.dp)
-            .clickable { onClick(task.id) },
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Checkbox(
-            checked = task.isCompleted,
-            onCheckedChange = { onCheckChange(task, it) }
-        )
-
-        Column(modifier = Modifier.padding(start = 8.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    text = task.title,
-                    style = MaterialTheme.typography.bodyLarge,
-                    textDecoration = if (task.isCompleted) TextDecoration.LineThrough else null
-                )
-                if (isHighYield && !task.isCompleted) {
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(text = "🔥", fontSize = 14.sp)
-                }
-            }
-
-            if (task.startDateTime != null) {
-                Text(
-                    text = task.startDateTime.format(DateTimeFormatter.ofPattern("HH:mm")),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.secondary
-                )
-            }
-        }
-    }
-}
+// Helper extension for alpha (transparency)
+fun Modifier.alpha(alpha: Float) = this.then(Modifier.graphicsLayer(alpha = alpha))
+// Note: You need to import androidx.compose.ui.graphics.graphicsLayer
