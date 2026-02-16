@@ -29,7 +29,7 @@ import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.algorithmx.planner.data.entity.Task
-import com.algorithmx.planner.data.entity.TaskWithSubtasks // Import new relation class
+import com.algorithmx.planner.data.entity.TaskWithSubtasks
 import java.time.format.DateTimeFormatter
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -81,6 +81,9 @@ fun HomeScreen(
                     items(state.tasks) { item ->
                         ExpandableTaskItem(
                             item = item,
+                            // FIX: Use state from ViewModel
+                            isExpanded = state.expandedTaskIds.contains(item.task.id),
+                            onToggleExpand = { viewModel.onToggleExpand(item.task.id) },
                             onToggleCheck = viewModel::onTaskCheckChanged,
                             onClick = { onNavigateToEdit(item.task.id) }
                         )
@@ -93,41 +96,60 @@ fun HomeScreen(
 
 // --- COMPONENT: Expandable Task Item (Parent + Children) ---
 
+
 @Composable
 fun ExpandableTaskItem(
     item: TaskWithSubtasks,
+    isExpanded: Boolean,
+    onToggleExpand: () -> Unit,
     onToggleCheck: (Task, Boolean) -> Unit,
     onClick: () -> Unit
 ) {
-    var isExpanded by remember { mutableStateOf(true) } // Default open to see subtasks
     val hasSubtasks = item.subtasks.isNotEmpty()
 
     Column {
-        // 1. Parent Task
+        // Parent (No change here)
         TaskCard(
             task = item.task,
             onCheckedChange = { isChecked -> onToggleCheck(item.task, isChecked) },
             onClick = onClick,
             hasSubtasks = hasSubtasks,
             isExpanded = isExpanded,
-            onExpandToggle = { isExpanded = !isExpanded }
+            onExpandToggle = onToggleExpand
         )
 
-        // 2. Children Tasks (Indented)
+        // Children with Connectors
         AnimatedVisibility(visible = isExpanded && hasSubtasks) {
-            Column(
-                modifier = Modifier
-                    .padding(start = 32.dp, top = 4.dp) // Indentation
-            ) {
-                item.subtasks.forEach { child ->
-                    // Reuse TaskCard but smaller/simpler
-                    TaskCard(
-                        task = child,
-                        onCheckedChange = { isChecked -> onToggleCheck(child, isChecked) },
-                        onClick = { /* Navigate to child edit if needed */ },
-                        isSubtask = true
-                    )
-                    Spacer(modifier = Modifier.height(4.dp))
+            Column {
+                item.subtasks.forEachIndexed { index, child ->
+                    val isLast = index == item.subtasks.lastIndex
+
+                    Row(modifier = Modifier.height(IntrinsicSize.Min)) {
+                        // 1. The Connector Line
+                        // We use a Box to align it properly
+                        Box(
+                            modifier = Modifier
+                                .width(48.dp) // Width of indentation
+                                .fillMaxHeight(),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            // Custom drawing
+                            TaskTreeConnector(
+                                connectorHeight = 80.dp, // Updated parameter name
+                                isLast = isLast
+                            )
+                        }
+
+                        // 2. The Task Card
+                        Box(modifier = Modifier.weight(1f).padding(bottom = 4.dp)) {
+                            TaskCard(
+                                task = child,
+                                onCheckedChange = { isChecked -> onToggleCheck(child, isChecked) },
+                                onClick = { /* Edit child */ },
+                                isSubtask = true
+                            )
+                        }
+                    }
                 }
             }
         }
@@ -268,4 +290,3 @@ fun QuickAddSection(
 
 // Helper extension for alpha (transparency)
 fun Modifier.alpha(alpha: Float) = this.then(Modifier.graphicsLayer(alpha = alpha))
-// Note: You need to import androidx.compose.ui.graphics.graphicsLayer

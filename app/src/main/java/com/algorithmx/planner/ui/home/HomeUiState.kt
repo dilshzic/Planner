@@ -17,10 +17,17 @@ import java.util.UUID
 import javax.inject.Inject
 
 data class HomeUiState(
+    // Data State
     val selectedDate: LocalDate = LocalDate.now(),
     val tasks: List<TaskWithSubtasks> = emptyList(),
+
+    // NEW: Track expanded parent IDs
+    val expandedTaskIds: Set<String> = emptySet(),
+
     val workloadStatus: WorkloadLevel = WorkloadLevel.RECOVERY,
     val totalMinutes: Int = 0,
+
+    // Input/Loading State
     val quickAddText: String = "",
     val isLoading: Boolean = false
 )
@@ -39,6 +46,7 @@ class HomeViewModel @Inject constructor(
     private val _inputText = MutableStateFlow("")
     private val _isLoading = MutableStateFlow(false)
 
+    private val _expandedIds = MutableStateFlow<Set<String>>(emptySet())
     // Data Stream: Fetch Hierarchy
     private val _tasksFlow = repository.getAllTasksWithSubtasks()
 
@@ -47,8 +55,9 @@ class HomeViewModel @Inject constructor(
         _selectedDate,
         _tasksFlow,
         _inputText,
-        _isLoading
-    ) { date, allTasks, text, loading ->
+        _isLoading,
+        _expandedIds
+    ) { date, allTasks, text, loading, expanded ->
 
         // Filter tasks for the selected date
         val dailyTasks = allTasks.filter { it.task.scheduledDate == date.toString() }
@@ -117,6 +126,14 @@ class HomeViewModel @Inject constructor(
         viewModelScope.launch {
             // Using the new smart completion logic we added to Repository
             repository.toggleTaskCompletion(task.id, isChecked)
+        }
+    }
+    fun onToggleExpand(taskId: String) {
+        val current = _expandedIds.value
+        if (current.contains(taskId)) {
+            _expandedIds.value = current - taskId
+        } else {
+            _expandedIds.value = current + taskId
         }
     }
 
