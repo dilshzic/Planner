@@ -18,9 +18,7 @@ import javax.inject.Singleton
 class TaskRepositoryImpl @Inject constructor(
     private val taskDao: TaskDao,
     private val categoryDao: CategoryDao,
-    // Note: If you don't have FirestoreService class, remove it from constructor.
-    // If you do, make sure it handles Strings too.
-    // private val firestoreService: FirestoreService,
+    private val timeLogDao: TimeLogDao,
     private val yieldEngine: YieldEngine
 ) : TaskRepository {
 
@@ -140,5 +138,13 @@ class TaskRepositoryImpl @Inject constructor(
 
     override suspend fun deleteCategory(category: Category) {
         categoryDao.deleteCategory(category)
+    }
+
+    override suspend fun insertTimeLog(log: com.algorithmx.planner.data.entity.TimeLog) {
+        timeLogDao.insertLog(log)
+    }
+
+    override fun getLogsForDate(dateString: String): kotlinx.coroutines.flow.Flow<List<com.algorithmx.planner.data.entity.TimeLog>> {
+        return timeLogDao.getLogsForDate(dateString)
     }
 }

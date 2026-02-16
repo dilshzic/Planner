@@ -5,14 +5,17 @@ import androidx.room.RoomDatabase
 import androidx.room.TypeConverters
 import com.algorithmx.planner.data.entity.Category
 import com.algorithmx.planner.data.entity.Task
+import com.algorithmx.planner.data.entity.TimeLog
+
 
 @Database(
-    entities = [Task::class, Category::class], 
+    entities = [Task::class, Category::class, TimeLog::class],
     version = 1, 
     exportSchema = false
 )
 @TypeConverters(Converters::class)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun taskDao(): TaskDao
-    abstract fun categoryDao(): CategoryDao 
+    abstract fun categoryDao(): CategoryDao
+    abstract fun timeLogDao(): TimeLogDao
 }

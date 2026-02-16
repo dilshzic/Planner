@@ -38,6 +38,9 @@ data class Task(
     val lastGeneratedDate: String? = null,
     val isCompleted: Boolean = false,
 
+    val estimatedBlocks: Int = 0,
+    val totalBlocksSpent: Int = 0,
+
     val userId: String? = null,
     val updatedAt: Long = System.currentTimeMillis()
 ) {

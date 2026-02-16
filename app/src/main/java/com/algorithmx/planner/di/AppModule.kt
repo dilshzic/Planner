@@ -19,6 +19,11 @@ import javax.inject.Singleton
 object AppModule {
 
     @Provides
+    fun provideTimeLogDao(db: AppDatabase): TimeLogDao = db.timeLogDao() // Assuming you added this to Database abstract class in Step 1
+
+    // 2. Update Repository Provider
+
+    @Provides
     @Singleton
     fun provideDatabase(@ApplicationContext context: Context): AppDatabase {
         return Room.databaseBuilder(
@@ -70,13 +75,13 @@ object AppModule {
     fun provideTaskRepository(
         taskDao: TaskDao,
         categoryDao: CategoryDao,
-        // REMOVED: firestoreService (Your Impl doesn't need it anymore)
+        timeLogDao: TimeLogDao,
         yieldEngine: YieldEngine
     ): TaskRepository {
         return TaskRepositoryImpl(
             taskDao = taskDao,
             categoryDao = categoryDao,
-            // REMOVED: firestoreService
+            timeLogDao = timeLogDao,
             yieldEngine = yieldEngine
         )
     }

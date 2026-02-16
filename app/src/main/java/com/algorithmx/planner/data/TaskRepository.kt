@@ -33,4 +33,6 @@ interface TaskRepository {
 
     fun getHighYieldTasks(): Flow<List<Task>>
     fun getAllTasks(): Flow<List<Task>>
+    suspend fun insertTimeLog(log: com.algorithmx.planner.data.entity.TimeLog)
+    fun getLogsForDate(dateString: String): kotlinx.coroutines.flow.Flow<List<com.algorithmx.planner.data.entity.TimeLog>>
 }

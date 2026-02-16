@@ -14,6 +14,7 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.algorithmx.planner.ui.addedit.AddEditTaskScreen
 import com.algorithmx.planner.ui.calendar.CalendarScreen
+import com.algorithmx.planner.ui.focus.FocusScreen
 import com.algorithmx.planner.ui.home.HomeScreen
 import com.algorithmx.planner.ui.navigation.PlannerBottomBar
 import com.algorithmx.planner.ui.navigation.PlannerNavRail
@@ -78,6 +79,12 @@ fun PlannerAppUI(windowSize: WindowWidthSizeClass) {
                     AddEditTaskScreen(
                         onNavigateBack = { navController.popBackStack() }
                     )
+                }
+                composable(
+                    route = Screen.Focus.route,
+                    arguments = listOf(navArgument("taskId") { nullable = true })
+                ) {
+                    FocusScreen() // Hilt will provide the ViewModel, and you can pull the taskId from SavedStateHandle
                 }
                 composable(
                     route = Screen.AddEditTask.route, // "add_task/{taskId}"
