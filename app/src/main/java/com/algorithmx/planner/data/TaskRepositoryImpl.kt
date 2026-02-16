@@ -21,7 +21,7 @@ import java.time.LocalDate
 class TaskRepositoryImpl @Inject constructor(
     private val taskDao: TaskDao,
     private val categoryDao: CategoryDao,
-    private valtimeLogDao: TimeLogDao,
+    private val timeLogDao: TimeLogDao,
     private val yieldEngine: YieldEngine
 ) : TaskRepository {
 
@@ -30,7 +30,6 @@ class TaskRepositoryImpl @Inject constructor(
     private val scope = CoroutineScope(Dispatchers.IO)
 
     init {
-        // Only observe if user is logged in
         if (auth.currentUser != null) {
             observeCloudChanges()
         }
@@ -48,7 +47,7 @@ class TaskRepositoryImpl @Inject constructor(
                         try {
                             doc.toObject(Task::class.java)
                         } catch (e: Exception) {
-                            null // Skip incompatible documents
+                            null
                         }
                     }
                     scope.launch {
@@ -62,8 +61,8 @@ class TaskRepositoryImpl @Inject constructor(
 
     // --- READ METHODS ---
 
-    override fun getTasksForDate(dateString: String): Flow<List<Task>> {
-        return taskDao.getTasksForDate(dateString)
+    override fun getTasksForDate(date: String): Flow<List<Task>> {
+        return taskDao.getTasksForDate(date)
     }
 
     override fun getBacklogTasks(): Flow<List<Task>> {
@@ -72,11 +71,6 @@ class TaskRepositoryImpl @Inject constructor(
 
     override fun getSubtasks(parentId: String): Flow<List<Task>> {
         return taskDao.getSubtasks(parentId)
-    }
-
-    // NEW: Smart Hierarchy Fetch
-    override fun getTaskWithSubtasks(taskId: String): Flow<TaskWithSubtasks?> {
-        return taskDao.getTaskWithSubtasks(taskId)
     }
 
     override fun getAllCategories(): Flow<List<Category>> {
@@ -108,7 +102,33 @@ class TaskRepositoryImpl @Inject constructor(
         }
     }
 
-    // --- WRITE METHODS ---
+    // --- PARENT / CHILD HIERARCHY ---
+
+    override fun getTaskWithSubtasks(taskId: String): Flow<TaskWithSubtasks?> {
+        return taskDao.getTaskWithSubtasks(taskId)
+    }
+
+    // NEW: Implemented to match Interface
+    override fun getAllTasksWithSubtasks(): Flow<List<TaskWithSubtasks>> {
+        return taskDao.getAllTasksWithSubtasks()
+    }
+
+    // --- TIME BLOCKS & FOCUS ---
+
+    override suspend fun insertTimeLog(log: TimeLog) {
+        timeLogDao.insertLog(log)
+    }
+
+    override fun getLogsForDate(dateString: String): Flow<List<TimeLog>> {
+        return timeLogDao.getLogsForDate(dateString)
+    }
+
+    // NEW: Implemented to match Interface
+    override fun getTotalBlocksForDate(dateString: String): Flow<Int?> {
+        return timeLogDao.getTotalBlocksForDate(dateString)
+    }
+
+    // --- WRITE ACTIONS ---
 
     override suspend fun upsertTask(task: Task) {
         val uid = auth.currentUser?.uid
@@ -123,37 +143,33 @@ class TaskRepositoryImpl @Inject constructor(
         }
     }
 
-    // --- SMART COMPLETION LOGIC ---
     override suspend fun toggleTaskCompletion(taskId: String, isCompleted: Boolean) {
         val task = taskDao.getTaskById(taskId) ?: return
 
-        // 1. Update the Target Task
+        // 1. Update Target
         val updatedTask = task.copy(
             isCompleted = isCompleted,
             completedDate = if (isCompleted) LocalDate.now().toString() else null
         )
-        upsertTask(updatedTask) // Use upsert to handle cloud sync
+        upsertTask(updatedTask)
 
-        // 2. SCENARIO A: TRICKLE DOWN (Parent -> Children)
+        // 2. Trickle Down (Parent -> Children)
         val subtasks = taskDao.getSubtasksSync(taskId)
         if (subtasks.isNotEmpty()) {
             subtasks.forEach { child ->
                 if (child.isCompleted != isCompleted) {
-                    toggleTaskCompletion(child.id, isCompleted) // Recursive
+                    toggleTaskCompletion(child.id, isCompleted)
                 }
             }
         }
 
-        // 3. SCENARIO B: BUBBLE UP (Child -> Parent)
+        // 3. Bubble Up (Child -> Parent)
         if (task.parentId != null) {
             val parent = taskDao.getTaskById(task.parentId)
             if (parent != null) {
                 if (isCompleted) {
-                    // Check if ALL siblings are now done
                     val siblings = taskDao.getSubtasksSync(parent.id)
-                    // Note: 'siblings' might contain the OLD version of 'task' if transaction hasn't committed,
-                    // but since we called upsertTask above, Room usually handles this fast enough for UI.
-                    // For perfect safety, we check logic manually:
+                    // Check if all siblings (including self) are done
                     val allDone = siblings.all { it.id == taskId || it.isCompleted }
 
                     if (allDone && !parent.isCompleted) {
@@ -163,7 +179,7 @@ class TaskRepositoryImpl @Inject constructor(
                         ))
                     }
                 } else {
-                    // If we un-checked a child, the Parent MUST be un-checked
+                    // If child uncompleted, parent must be uncompleted
                     if (parent.isCompleted) {
                         upsertTask(parent.copy(
                             isCompleted = false,
@@ -177,7 +193,6 @@ class TaskRepositoryImpl @Inject constructor(
 
     override suspend fun deleteTask(task: Task) {
         taskDao.deleteTask(task)
-
         val uid = auth.currentUser?.uid
         if (uid != null) {
             db.collection("users").document(uid)
@@ -192,13 +207,5 @@ class TaskRepositoryImpl @Inject constructor(
 
     override suspend fun deleteCategory(category: Category) {
         categoryDao.deleteCategory(category)
-    }
-
-    override suspend fun insertTimeLog(log: TimeLog) {
-        timeLogDao.insertLog(log)
-    }
-
-    override fun getLogsForDate(dateString: String): Flow<List<TimeLog>> {
-        return timeLogDao.getLogsForDate(dateString)
     }
 }

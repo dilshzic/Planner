@@ -13,11 +13,20 @@ interface TimeLogDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertLog(log: TimeLog)
 
-    // Get all logs for a specific day (To draw the Grid)
+    // Get all logs for a specific day (To draw the 5-min Grid)
     @Query("SELECT * FROM time_logs WHERE dateLogged = :dateString ORDER BY startTime ASC")
     fun getLogsForDate(dateString: String): Flow<List<TimeLog>>
 
-    // Get total blocks spent on a specific task
+    // Get total blocks spent across ALL tasks for a specific day
+    // This powers the "Daily Progress" progress bar and the Grid stats
+    @Query("SELECT SUM(blocksEarned) FROM time_logs WHERE dateLogged = :dateString")
+    fun getTotalBlocksForDate(dateString: String): Flow<Int?>
+
+    // Get total blocks spent on a specific task (used for the "Spent" badge on a task)
     @Query("SELECT SUM(blocksEarned) FROM time_logs WHERE taskId = :taskId")
     fun getBlocksForTask(taskId: String): Flow<Int?>
+
+    // Synchronous version for internal logic calculations
+    @Query("SELECT SUM(blocksEarned) FROM time_logs WHERE dateLogged = :dateString")
+    suspend fun getTotalBlocksForDateSync(dateString: String): Int?
 }
