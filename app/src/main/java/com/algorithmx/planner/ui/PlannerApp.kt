@@ -19,7 +19,7 @@ import com.algorithmx.planner.ui.home.HomeScreen
 import com.algorithmx.planner.ui.navigation.PlannerBottomBar
 import com.algorithmx.planner.ui.navigation.PlannerNavRail
 import com.algorithmx.planner.ui.navigation.Screen
-import com.algorithmx.planner.ui.settings.SettingsScreen // Added Import
+import com.algorithmx.planner.ui.settings.SettingsScreen
 import com.algorithmx.planner.ui.triage.TriageScreen
 
 @Composable
@@ -53,39 +53,45 @@ fun PlannerAppUI(windowSize: WindowWidthSizeClass) {
                 startDestination = Screen.Home.route,
                 modifier = Modifier.padding(innerPadding)
             ) {
+                // --- HOME ---
                 composable(Screen.Home.route) {
                     HomeScreen(
-                        isTablet = isTablet,
-                        onTaskClick = { taskId ->
+                        // The single callback handles both "New" (via FAB) and "Edit" (via List Click)
+                        onNavigateToEdit = { taskId ->
                             navController.navigate(Screen.AddEditTask.createRoute(taskId))
-                        },
-                        // FIXED: Changed 'onAddTaskClick' to 'onNavigateToAdd' to match HomeScreen definition
-                        onNavigateToAdd = {
-                            navController.navigate(Screen.AddEditTask.createRoute("new"))
                         }
                     )
                 }
+
+                // --- PLANNING (TRIAGE) ---
                 composable(Screen.Planning.route) {
-                    TriageScreen()
+                    TriageScreen(
+                        // Add this if TriageScreen needs to open tasks too
+                        onNavigateToEdit = { taskId ->
+                            navController.navigate(Screen.AddEditTask.createRoute(taskId))
+                        }
+                    )
                 }
+
+                // --- CALENDAR ---
                 composable(Screen.Calendar.route) {
                     CalendarScreen()
                 }
+
+                // --- SETTINGS ---
                 composable(Screen.Settings.route) {
-                    // FIXED: Replaced placeholder with actual Screen
                     SettingsScreen()
                 }
-                composable("add_task") {
-                    AddEditTaskScreen(
-                        onNavigateBack = { navController.popBackStack() }
-                    )
-                }
+
+                // --- FOCUS ---
                 composable(
                     route = Screen.Focus.route,
                     arguments = listOf(navArgument("taskId") { nullable = true })
                 ) {
-                    FocusScreen() // Hilt will provide the ViewModel, and you can pull the taskId from SavedStateHandle
+                    FocusScreen()
                 }
+
+                // --- ADD / EDIT TASK ---
                 composable(
                     route = Screen.AddEditTask.route, // "add_task/{taskId}"
                     arguments = listOf(navArgument("taskId") {
@@ -93,8 +99,7 @@ fun PlannerAppUI(windowSize: WindowWidthSizeClass) {
                         defaultValue = "new"
                     })
                 ) {
-                    // We don't need to manually pass taskId here because
-                    // the HiltViewModel inside AddEditTaskScreen reads it automatically.
+                    // We don't need to manually pass taskId here; ViewModel handles it.
                     AddEditTaskScreen(
                         onNavigateBack = { navController.popBackStack() }
                     )
